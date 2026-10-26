@@ -29,7 +29,7 @@
   --navy: #0b0f16; --navy-fg: #eef1f6; --ok: #5cb860; --warn: #f0a33a; --bad: #ef5350; --grey: #6b7486; color-scheme: dark }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent }
-html, body { margin: 0 }
+html, body { margin: 0; overflow-x: hidden }
 body { background: var(--bg); color: var(--fg); font: 16px/1.4 var(--font); -webkit-text-size-adjust: 100% }
 button, input { font: inherit; color: inherit }
 button { cursor: pointer; touch-action: manipulation }
@@ -102,16 +102,20 @@ main { padding: 14px max(16px, env(safe-area-inset-right, 0px)) 24px max(16px, e
 .rec.attivo .pallino { background: #fff; animation: pulsa 1s infinite }
 @keyframes pulsa { 50% { opacity: .3 } }
 @media (prefers-reduced-motion: reduce) { .rec.attivo .pallino { animation: none } }
-.audio { display: flex; align-items: center; gap: 8px }
-.audio audio { flex: 1; min-width: 0; height: 40px }
+.audio { display: grid; gap: 4px; min-width: 0 }
+.audio-t { display: flex; align-items: center; gap: 8px; font-size: 14px }
+.audio-t span { flex: 1; color: var(--muted) }
+.audio audio { width: 100%; min-width: 0; height: 40px }
 .x { border: 1px solid var(--line); background: none; border-radius: 8px; padding: 8px 10px; font-size: 14px; color: var(--muted) }
 .x.conferma { background: var(--bad); color: #fff; border-color: var(--bad) }
 
 .foto-btn { display: flex; align-items: center; justify-content: center; gap: 8px; border: 1px dashed var(--muted); border-radius: 14px; padding: 14px; font-weight: 700 }
-.galleria { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px }
-.galleria figure { margin: 0; position: relative; aspect-ratio: 1; max-width: 100% }
+.galleria { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px }
+.galleria:empty, #audio:empty, .conta:empty { display: none }
+.galleria figure { margin: 0; position: relative; flex: none; width: 72px; height: 72px }
 .galleria img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; display: block }
-.galleria .x { position: absolute; top: 4px; right: 4px; background: rgba(0,0,0,.55); color: #fff; border: 0; padding: 4px 8px }
+.galleria .x { position: absolute; top: 2px; right: 2px; background: rgba(0,0,0,.55); color: #fff; border: 0; padding: 2px 6px; font-size: 12px }
+.conta { font-size: 14px; font-weight: 700; color: var(--ok) }
 
 .fine { display: grid; gap: 10px; margin-top: 4px }
 .secondario { width: 100%; border: 1px solid var(--line); background: none; border-radius: 12px; padding: 14px; font-weight: 600; color: var(--muted) }
@@ -134,6 +138,8 @@ main { padding: 14px max(16px, env(safe-area-inset-right, 0px)) 24px max(16px, e
 .voce small { display: block; color: var(--muted); font-size: 12px }
 .voce.tot { font-weight: 800; border-top: 1px solid var(--line); margin-top: 4px; padding-top: 8px }
 .voce.max { background: var(--chip); border-radius: 8px; padding: 8px 10px; margin-top: 8px; font-weight: 700 }
+.link { background: none; border: 0; padding: 0; color: var(--fg); text-decoration: underline; font-weight: 600 }
+.ok { color: var(--ok) } .ko { color: var(--bad) }
 .avviso { position: fixed; left: 16px; right: 16px; top: calc(env(safe-area-inset-top, 0px) + 64px); z-index: 9; background: var(--navy); color: var(--navy-fg);
   border-radius: 12px; padding: 12px 14px; font-size: 15px; box-shadow: 0 6px 20px rgba(0,0,0,.25); max-width: 528px; margin: 0 auto }
 </style>
@@ -149,7 +155,17 @@ main { padding: 14px max(16px, env(safe-area-inset-right, 0px)) 24px max(16px, e
 <main id="home">
   <button class="grande" id="nuova">+ Nuova visita</button>
   <div id="elenco" style="display:grid;gap:8px"></div>
-  <p class="nota" id="nota-home">Le visite restano salvate sul telefono, anche senza campo.</p>
+  <p class="nota" id="invio">Le visite restano salvate sul telefono, anche senza campo.</p>
+  <form class="blocco" id="collega" hidden autocomplete="on">
+    <div class="campo">
+      <span class="etichetta">Collegati al sistema Immobiltrade</span>
+      <span class="nota">Una volta sola: poi le visite arrivano da sole nella piattaforma, alla voce Visite.</span>
+      <input class="testo" id="c_email" type="email" autocomplete="username" placeholder="email" required>
+      <input class="testo" id="c_pw" type="password" autocomplete="current-password" placeholder="password" required>
+      <button class="grande" type="submit">Collegati</button>
+      <span class="nota" id="c_esito" role="status"></span>
+    </div>
+  </form>
 </main>
 
 <main id="visita" hidden>
@@ -205,18 +221,20 @@ main { padding: 14px max(16px, env(safe-area-inset-right, 0px)) 24px max(16px, e
     <div class="campo">
       <button class="rec" id="rec"><span class="pallino"></span><span id="rec-t">Registra un vocale</span></button>
       <span class="nota">Racconta tutto il resto: stato, impianti, condominio, venditore… In ufficio il Mac lo trascrive e compila il progetto.</span>
+      <span class="conta" id="conta-audio"></span>
       <div id="audio" style="display:grid;gap:6px"></div>
     </div>
     <div class="campo">
       <label class="foto-btn" for="f_foto">Scatta o aggiungi foto</label>
-      <input type="file" id="f_foto" accept="image/*" capture="environment" multiple hidden>
+      <input type="file" id="f_foto" accept="image/*" multiple hidden>
+      <span class="conta" id="conta-foto"></span>
       <div class="galleria" id="galleria"></div>
     </div>
   </div>
 
   <div class="fine">
     <button class="grande" id="conclusa">Visita conclusa</button>
-    <button class="secondario" id="elimina">Elimina questa visita</button>
+    <button class="secondario" id="elimina">Elimina dal telefono</button>
   </div>
 </main>
 
@@ -245,6 +263,7 @@ const STANDARD = {
   costo_caparre: 0, costo_mutuo: 5, costo_crowd: 12, costo_privati: 10, margine_pct: 30,
 };
 const MUTUO_PCT = 50;           // la banca di solito dà il 50% di (acquisto + lavori)
+const TETTO_LAVORI = 100000;    // Eric 26/10: tetto da rifare = 100.000 € di lavori in più (costo ditte)
 const ROI_VERDE = 30, ROI_GIALLO = 20;  // semaforo: da confermare con Eric
 const ROI_OBIETTIVO = 30;       // per il "prezzo massimo"
 // Superfici: in alternativa ai mq commerciali si scrivono i mq reali per categoria (Eric 26/10: senza coefficienti,
@@ -346,7 +365,9 @@ function perBp(d) {
     superfici: det.map(x => Object.assign({}, x, {vendita_mq: d.vendita_mq, lavori_mq: STANDARD.lavori_mq})),
     cambio_uso: d.cambio_uso === "si" ? (d.oneri_cambio_uso || 0) : 0,
     caparre: null, caparre_pct: null, mutuo: null, mutuo_pct: MUTUO_PCT, crowd: null, privati: null,
-    lavori_tot: null, oneri_manuali: null, investitori: [], crowd_blocchi: [],
+    // tetto da rifare: lavori = mq × 1.500 + 100.000 (nel business plan è la "cifra totale lavori")
+    lavori_tot: d.tetto === "si" ? (mqTot(d) || 0) * STANDARD.lavori_mq + TETTO_LAVORI : null,
+    oneri_manuali: null, investitori: [], crowd_blocchi: [],
   });
 }
 function conto(d) {
@@ -425,9 +446,11 @@ async function home() {
     const r = conto(x.dati), mq = mqTot(x.dati);
     return `<button class="riga" data-id="${x.id}"><span class="sem ${semaforo(r)}"></span>
       <span class="riga-t"><b>${esc(x.nome || "Visita senza nome")}</b>
-      <small>${dataIt(x.creata)}${mq ? " · " + fmt(mq) + " mq" : ""}${x.stato === "conclusa" ? " · conclusa" : ""}</small></span>
+      <small>${dataIt(x.creata)}${mq ? " · " + fmt(mq) + " mq" : ""}${x.stato === "conclusa" ? " · conclusa" : ""}${x.inviata && !x.da_inviare ? " · nel sistema ✓" : ""}</small></span>
       <span class="riga-roi">${r && r.roi !== null ? "ROI " + fmt(r.roi) + "%" : "–"}</span></button>`;
   }).join("") : `<p class="vuoto">Nessuna visita ancora.<br>Tocca <b>Nuova visita</b> quando entri in un immobile: data, ora e posizione si salvano da sole.</p>`;
+  statoInvio();
+  invia();
 }
 $("elenco").addEventListener("click", async e => {
   const b = e.target.closest(".riga"); if (!b) return;
@@ -460,7 +483,7 @@ function apriVisita(v) {
   $("oneri_box").hidden = d.cambio_uso !== "si";
   const conDet = righeDettaglio(d).length > 0;
   disegnaDettaglio(); mostraDettaglio(conDet);
-  $("elimina").classList.remove("conferma"); $("elimina").textContent = "Elimina questa visita";
+  $("elimina").classList.remove("conferma"); $("elimina").textContent = "Elimina dal telefono";
   mostraPosizione();
   aggiorna(); mostraFile();
   window.scrollTo(0, 0);
@@ -471,15 +494,37 @@ function prendiPosizione(v) {
   navigator.geolocation.getCurrentPosition(p => {
     v.pos = {lat: p.coords.latitude, lon: p.coords.longitude, precisione: Math.round(p.coords.accuracy)};
     if (cor && cor.id === v.id) mostraPosizione();
-    salvaDopo();
-  }, () => { v.pos = {errore: true}; if (cor && cor.id === v.id) mostraPosizione(); salvaDopo(); },
+    salvaVisita(v);
+    indirizzoDa(v);
+  }, () => { v.pos = {errore: true}; if (cor && cor.id === v.id) mostraPosizione(); salvaVisita(v); },
   {enableHighAccuracy: true, timeout: 15000, maximumAge: 60000});
+}
+const salvaVisita = v => cor && cor.id === v.id ? salvaDopo() : metti("visite", Object.assign(v, {da_inviare: true}));
+// Dalla posizione all'indirizzo (OpenStreetMap, gratuito). Riempie il campo solo se è ancora vuoto.
+async function indirizzoDa(v) {
+  try {
+    const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${v.pos.lat}&lon=${v.pos.lon}&zoom=18&addressdetails=1&accept-language=it`);
+    const a = (await r.json()).address || {};
+    const via = [a.road || a.pedestrian || a.square || a.hamlet, a.house_number].filter(Boolean).join(" ");
+    const citta = a.city || a.town || a.village || a.municipality || "";
+    const sigla = (a["ISO3166-2-lvl6"] || "").split("-")[1] || "";
+    const testo = [via, citta].filter(Boolean).join(", ");
+    if (!testo) return;
+    v.pos.indirizzo = testo;
+    v.pos.comune = citta ? citta + (sigla ? ` (${sigla})` : "") : null;
+    if (!v.nome) {
+      v.nome = testo;
+      if (cor && cor.id === v.id && !$("f_nome").value) { $("f_nome").value = testo; $("titolo").textContent = testo; }
+    }
+    if (cor && cor.id === v.id) mostraPosizione();
+    salvaVisita(v);
+  } catch (e) {}
 }
 function mostraPosizione() {
   const p = cor.pos, el = $("pos");
   if (!p) { el.textContent = "Cerco la posizione…"; return; }
   if (p.errore) { el.innerHTML = `Posizione non disponibile. <a href="#" id="riprova">Riprova</a>`; return; }
-  el.innerHTML = `Posizione salvata (±${p.precisione} m) · <a href="https://maps.google.com/?q=${p.lat},${p.lon}" target="_blank" rel="noopener">vedi sulla mappa</a> · ${dataIt(cor.creata)}`;
+  el.innerHTML = `${p.indirizzo ? "Indirizzo trovato dalla posizione" : "Posizione salvata"} (±${p.precisione} m) · <a href="https://maps.google.com/?q=${p.lat},${p.lon}" target="_blank" rel="noopener">vedi sulla mappa</a> · ${dataIt(cor.creata)}`;
 }
 $("pos").addEventListener("click", e => { if (e.target.id === "riprova") { e.preventDefault(); cor.pos = null; mostraPosizione(); prendiPosizione(cor); } });
 
@@ -500,7 +545,8 @@ document.querySelectorAll(".si-no").forEach(g => g.addEventListener("click", e =
   const k = g.dataset.k, val = cor.dati[k] === b.dataset.v ? null : b.dataset.v;
   cor.dati[k] = val;
   g.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", String(x.dataset.v === val)));
-  if (k === "cambio_uso") { $("oneri_box").hidden = val !== "si"; aggiorna(); }
+  if (k === "cambio_uso") { $("oneri_box").hidden = val !== "si"; }
+  if (k === "cambio_uso" || k === "tetto") aggiorna();
   salvaDopo();
 }));
 
@@ -553,7 +599,7 @@ function aggiorna() {
     ["Ricavi", r.ricavi, `${fmt(r.mq_rif, r.mq_rif % 1 ? 1 : 0)} mq × ${fmt(v.vendita_mq)} €/mq`],
     ["Acquisto", r.acquisto],
     ["Notaio e imposte", r.notaio, "(acquisto + due diligence) × 9% + 3.000 €"],
-    ["Ristrutturazione", r.ristrutturazione, `${fmt(STANDARD.lavori_mq)} €/mq + ricarico Edilenergetica ${STANDARD.ricarico_edil}%`],
+    ["Ristrutturazione", r.ristrutturazione, `${fmt(STANDARD.lavori_mq)} €/mq${v.lavori_tot ? " + " + euro(TETTO_LAVORI) + " tetto" : ""} + ricarico Edilenergetica ${STANDARD.ricarico_edil}%`],
     ["Architetto e imprevisti", r.architetto + r.imprevisti, `${STANDARD.architetto_pct}% + 5% dei lavori delle ditte`],
     ["Oneri finanziari", r.oneri_fin, `mutuo ${MUTUO_PCT}% al ${STANDARD.costo_mutuo}% per ${STANDARD.mesi} mesi`],
     ["Spese standard", spese, "due diligence, rendering, assicurazioni, allacci"],
@@ -580,12 +626,18 @@ async function salvaOra() {
   clearTimeout(tSalva);
   if (!cor) return;
   cor.aggiornata = new Date().toISOString();
+  cor.da_inviare = true;
   try { await metti("visite", cor); $("salvato").textContent = "salvato ✓"; }
   catch (e) { $("salvato").textContent = "non salvato!"; }
+  inviaDopo();
 }
-document.addEventListener("visibilitychange", () => { if (document.hidden) salvaOra(); });
+document.addEventListener("visibilitychange", async () => { if (document.hidden) { await salvaOra(); invia(); } });
 
-$("conclusa").addEventListener("click", async () => { cor.stato = "conclusa"; await salvaOra(); avviso("Visita salvata sul telefono."); home(); });
+$("conclusa").addEventListener("click", async () => {
+  cor.stato = "conclusa"; await salvaOra();
+  avviso(collegato() ? "Visita salvata: la invio al sistema." : "Visita salvata sul telefono.");
+  home();
+});
 $("elimina").addEventListener("click", async e => {
   const b = e.currentTarget;
   if (!b.classList.contains("conferma")) { b.classList.add("conferma"); b.textContent = "Tocca di nuovo per eliminare"; return; }
@@ -599,7 +651,7 @@ let rec = null, t0 = 0, timer = 0;
 function aggiornaRec() {
   const s = rec ? Math.floor((Date.now() - t0) / 1000) : 0;
   $("rec").classList.toggle("attivo", !!rec);
-  $("rec-t").textContent = rec ? `Ferma · ${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}` : "Registra un vocale";
+  $("rec-t").textContent = rec ? `Ferma · ${durataTxt(s)}` : $("audio").children.length ? "Registra un altro vocale" : "Registra un vocale";
 }
 $("rec").addEventListener("click", async () => {
   if (rec) { rec.stop(); return; }
@@ -618,7 +670,11 @@ $("rec").addEventListener("click", async () => {
     const durata = Math.round((Date.now() - t0) / 1000);
     rec = null; clearInterval(timer); aggiornaRec();
     const blob = new Blob(pezzi, {type: r.mimeType || tipo || "audio/mp4"});
-    await metti("file", {id: nuovoId(), visita, tipo: "audio", blob, creato: new Date().toISOString(), durata, inviato: false});
+    try {
+      await nuovoFile(visita, "audio", blob, {durata});
+      const n = (await fileDi(visita)).filter(x => x.tipo === "audio").length;
+      avviso(`Vocale ${n} salvato (${durataTxt(durata)}).`);
+    } catch (e) { avviso("Il vocale NON è stato salvato: memoria del telefono piena o archivio bloccato."); }
     if (cor && cor.id === visita) mostraFile();
   };
   rec = r; t0 = Date.now(); r.start(1000);
@@ -637,33 +693,150 @@ async function riduci(file) {
   } catch (e) { return file; }
 }
 $("f_foto").addEventListener("change", async e => {
-  const visita = cor.id;
-  for (const f of e.target.files) {
-    const blob = await riduci(f);
-    await metti("file", {id: nuovoId(), visita, tipo: "foto", blob, creato: new Date().toISOString(), inviato: false});
-  }
+  const visita = cor.id, scelte = [...e.target.files];
   e.target.value = "";
+  let ok = 0;
+  for (const f of scelte) {
+    try { await nuovoFile(visita, "foto", await riduci(f)); ok++; } catch (err) {}
+  }
+  avviso(ok === scelte.length ? (ok === 1 ? "Foto salvata." : `${ok} foto salvate.`) : `Salvate ${ok} foto su ${scelte.length}: memoria piena?`);
   if (cor && cor.id === visita) mostraFile();
 });
+
+// ---------- vocali e foto: salvati come dati semplici (ArrayBuffer), il modo più sicuro anche su iPhone
+async function nuovoFile(visita, tipo, blob, extra = {}) {
+  const f = Object.assign({id: nuovoId(), visita, tipo, mime: blob.type || (tipo === "foto" ? "image/jpeg" : "audio/mp4"),
+                           dati: await blob.arrayBuffer(), creato: new Date().toISOString(), inviato: false}, extra);
+  await metti("file", f);
+  if (cor && cor.id === visita) salvaDopo();
+  else { const v = await una("visite", visita); if (v) await metti("visite", Object.assign(v, {da_inviare: true})); }
+  return f;
+}
+const blobDi = f => f.blob || new Blob([f.dati], {type: f.mime});
+const durataTxt = s => `${Math.floor((s || 0) / 60)}:${String((s || 0) % 60).padStart(2, "0")}`;
 
 // ---------- elenco di vocali e foto della visita
 let url = [];
 async function mostraFile() {
   url.forEach(u => URL.revokeObjectURL(u)); url = [];
   const f = (await fileDi(cor.id)).sort((a, b) => a.creato.localeCompare(b.creato));
-  const link = b => { const u = URL.createObjectURL(b); url.push(u); return u; };
-  $("audio").innerHTML = f.filter(x => x.tipo === "audio").map((x, i) =>
-    `<div class="audio"><span class="nota">${i + 1}</span><audio controls preload="none" src="${link(x.blob)}"></audio>
-     <span class="nota">${Math.floor(x.durata / 60)}:${String(x.durata % 60).padStart(2, "0")}</span>
-     <button class="x" data-del="${x.id}" aria-label="Elimina vocale">✕</button></div>`).join("");
-  $("galleria").innerHTML = f.filter(x => x.tipo === "foto").map(x =>
-    `<figure><img src="${link(x.blob)}" alt="Foto della visita"><button class="x" data-del="${x.id}" aria-label="Elimina foto">✕</button></figure>`).join("");
+  const link = x => { const u = URL.createObjectURL(blobDi(x)); url.push(u); return u; };
+  const audio = f.filter(x => x.tipo === "audio"), foto = f.filter(x => x.tipo === "foto");
+  $("rec-t").textContent = rec ? $("rec-t").textContent : audio.length ? "Registra un altro vocale" : "Registra un vocale";
+  $("conta-audio").textContent = audio.length ? `${audio.length === 1 ? "1 vocale salvato" : audio.length + " vocali salvati"} ✓ · ogni registrazione si aggiunge alle altre` : "";
+  $("audio").innerHTML = audio.map((x, i) =>
+    `<div class="audio"><div class="audio-t"><b>Vocale ${i + 1}</b><span>${durataTxt(x.durata)}</span>
+     <button class="x" data-del="${x.id}" aria-label="Elimina vocale ${i + 1}">✕</button></div>
+     <audio controls preload="metadata" src="${link(x)}"></audio></div>`).join("");
+  $("conta-foto").textContent = foto.length ? `${foto.length === 1 ? "1 foto salvata" : foto.length + " foto salvate"} ✓` : "";
+  $("galleria").innerHTML = foto.map((x, i) =>
+    `<figure><img src="${link(x)}" alt="Foto ${i + 1}"><button class="x" data-del="${x.id}" aria-label="Elimina foto ${i + 1}">✕</button></figure>`).join("");
 }
 document.addEventListener("click", async e => {
   const b = e.target.closest("[data-del]"); if (!b) return;
   if (!b.classList.contains("conferma")) { b.classList.add("conferma"); b.textContent = "Elimina?"; setTimeout(() => { b.classList.remove("conferma"); b.textContent = "✕"; }, 3000); return; }
-  await togli("file", b.dataset.del); mostraFile();
+  await togli("file", b.dataset.del); mostraFile(); salvaDopo();
 });
+
+// ---------- invio al sistema: database Supabase "immobiltrade" (tabella visite + cartella privata "visite").
+// Si entra una volta sola con l'utente creato da Eric in Supabase; poi l'invio parte da solo quando c'è rete.
+const SUPA_URL = "https://miyheufkwfdrlzgqglyk.supabase.co";
+const SUPA_KEY = "";  // chiave PUBBLICA del progetto (sb_publishable_…): da inserire; senza, l'invio resta spento
+const leggiSessione = () => { try { return JSON.parse(localStorage.getItem("visite-sessione") || "null"); } catch (e) { return null; } };
+const scriviSessione = s => { try { s ? localStorage.setItem("visite-sessione", JSON.stringify(s)) : localStorage.removeItem("visite-sessione"); } catch (e) {} };
+const collegato = () => !!(SUPA_KEY && leggiSessione());
+async function entra(corpo, tipo) {
+  const r = await fetch(`${SUPA_URL}/auth/v1/token?grant_type=${tipo}`, {method: "POST",
+    headers: {apikey: SUPA_KEY, "Content-Type": "application/json"}, body: JSON.stringify(corpo)});
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) { const e = new Error(j.error_description || j.msg || "accesso non riuscito"); e.rifiutato = r.status < 500; throw e; }
+  const s = {token: j.access_token, refresh: j.refresh_token, scade: Date.now() + (j.expires_in - 60) * 1000, email: j.user && j.user.email};
+  scriviSessione(s);
+  return s;
+}
+async function token() {
+  let s = leggiSessione();
+  if (!s) return null;
+  if (Date.now() > s.scade) {
+    try { s = await entra({refresh_token: s.refresh}, "refresh_token"); }
+    catch (e) { if (e.rifiutato) scriviSessione(null); throw e; }
+  }
+  return s.token;
+}
+async function chiama(percorso, opz = {}) {
+  const t = await token();
+  if (!t) throw new Error("non collegato");
+  const r = await fetch(SUPA_URL + percorso, Object.assign({}, opz, {headers: Object.assign({apikey: SUPA_KEY, Authorization: "Bearer " + t}, opz.headers || {})}));
+  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  return r;
+}
+let inInvio = false, erroreInvio = "", tInvia = 0;
+function inviaDopo() { clearTimeout(tInvia); tInvia = setTimeout(invia, 4000); }
+async function invia() {
+  clearTimeout(tInvia);
+  if (inInvio || !collegato() || !navigator.onLine) { statoInvio(); return; }
+  inInvio = true; erroreInvio = "";
+  try {
+    for (const v of (await tutte("visite")).filter(x => x.da_inviare)) {
+      const versione = v.aggiornata;
+      for (const f of (await fileDi(v.id)).filter(x => !x.inviato)) {
+        const est = f.tipo === "foto" ? "jpg" : f.mime.includes("webm") ? "webm" : "m4a";
+        const percorso = `${v.id}/${f.tipo}-${f.id}.${est}`;
+        await chiama(`/storage/v1/object/visite/${percorso}`, {method: "POST", body: blobDi(f),
+          headers: {"Content-Type": f.mime, "x-upsert": "true"}});
+        f.inviato = true; f.percorso = percorso;
+        await metti("file", f);
+      }
+      const file = (await fileDi(v.id)).filter(x => x.inviato).sort((a, b) => a.creato.localeCompare(b.creato))
+        .map(x => ({id: x.id, tipo: x.tipo, percorso: x.percorso, creato: x.creato, durata: x.durata || null}));
+      const r = conto(v.dati);
+      const riga = {id: v.id, nome: v.nome || null, creata: v.creata, aggiornata: v.aggiornata, stato: v.stato,
+        autore: (leggiSessione() || {}).email || null, pos: v.pos, dati: v.dati, bp: perBp(v.dati), file,
+        conto: r ? {roi: r.roi, utile: r.utile, ricavi: r.ricavi, costi: r.costi, prezzo_max: r.prezzo_max} : null};
+      await chiama("/rest/v1/visite?on_conflict=id", {method: "POST", body: JSON.stringify(riga),
+        headers: {"Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=minimal"}});
+      // inviata: se nel frattempo è cambiata qualcosa, resta da inviare e partirà al prossimo giro
+      const ora = await una("visite", v.id);
+      if (ora && ora.aggiornata === versione && !(await fileDi(v.id)).some(x => !x.inviato)) {
+        ora.da_inviare = false; ora.inviata = new Date().toISOString();
+        await metti("visite", ora);
+        if (cor && cor.id === v.id && cor.aggiornata === versione) { cor.da_inviare = false; cor.inviata = ora.inviata; }
+      }
+    }
+  } catch (e) { erroreInvio = e.message; console.warn("invio", e); }
+  inInvio = false;
+  statoInvio();
+}
+async function statoInvio() {
+  const el = $("invio");
+  if (!el || $("home").hidden) return;
+  if (!SUPA_KEY) { el.innerHTML = "Le visite restano salvate sul telefono, anche senza campo. L'invio al sistema non è ancora attivo."; return; }
+  if (!leggiSessione()) { el.innerHTML = `Non sei collegato al sistema: le visite restano solo sul telefono. <button class="link" id="apri-collega">Collegati</button>`; return; }
+  let n = 0;
+  try { n = (await tutte("visite")).filter(x => x.da_inviare).length; } catch (e) {}
+  const chi = esc((leggiSessione() || {}).email || "");
+  el.innerHTML = (n === 0 ? `<b class="ok">Tutte le visite sono nel sistema ✓</b>`
+    : !navigator.onLine ? `<b>${n} da inviare</b>: partiranno appena c'è rete.`
+    : erroreInvio ? `<b class="ko">Invio non riuscito</b> (${n} da inviare): riprovo più tardi. <button class="link" id="riprova-invio">Riprova ora</button>`
+    : `<b>Invio in corso…</b> (${n})`) + ` <span class="nota">· ${chi} · <button class="link" id="esci">Esci</button></span>`;
+}
+document.addEventListener("click", async e => {
+  const id = e.target.id;
+  if (id === "apri-collega") { $("collega").hidden = false; $("c_email").focus(); }
+  if (id === "riprova-invio") invia();
+  if (id === "esci") { scriviSessione(null); statoInvio(); }
+});
+$("collega").addEventListener("submit", async e => {
+  e.preventDefault();
+  $("c_esito").textContent = "Collego…";
+  try {
+    await entra({email: $("c_email").value.trim(), password: $("c_pw").value}, "password");
+    $("c_pw").value = ""; $("collega").hidden = true; $("c_esito").textContent = "";
+    avviso("Collegato: le visite partono da sole quando c'è rete.");
+    invia();
+  } catch (err) { $("c_esito").textContent = navigator.onLine ? "Email o password sbagliate." : "Serve la rete per collegarsi."; }
+});
+window.addEventListener("online", () => invia());
 
 // ---------- avvio: l'app funziona anche senza rete (service worker)
 if ("serviceWorker" in navigator && location.protocol !== "file:") navigator.serviceWorker.register("sw.js").catch(() => {});
