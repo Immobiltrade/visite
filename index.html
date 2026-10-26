@@ -745,7 +745,7 @@ document.addEventListener("click", async e => {
 // ---------- invio al sistema: database Supabase "immobiltrade" (tabella visite + cartella privata "visite").
 // Si entra una volta sola con l'utente creato da Eric in Supabase; poi l'invio parte da solo quando c'è rete.
 const SUPA_URL = "https://miyheufkwfdrlzgqglyk.supabase.co";
-const SUPA_KEY = "";  // chiave PUBBLICA del progetto (sb_publishable_…): da inserire; senza, l'invio resta spento
+const SUPA_KEY = "sb_publishable_VcQ-zNBNcgl5rQf_MIiP3Q_hOiowtfD";  // chiave PUBBLICA (publishable): senza login non legge né scrive nulla
 const leggiSessione = () => { try { return JSON.parse(localStorage.getItem("visite-sessione") || "null"); } catch (e) { return null; } };
 const scriviSessione = s => { try { s ? localStorage.setItem("visite-sessione", JSON.stringify(s)) : localStorage.removeItem("visite-sessione"); } catch (e) {} };
 const collegato = () => !!(SUPA_KEY && leggiSessione());
