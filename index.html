@@ -263,7 +263,7 @@ const STANDARD = {
   costo_caparre: 0, costo_mutuo: 5, costo_crowd: 12, costo_privati: 10, margine_pct: 30,
 };
 const MUTUO_PCT = 50;           // la banca di solito dà il 50% di (acquisto + lavori)
-const TETTO_LAVORI = 100000;    // Eric 26/10: tetto da rifare = 100.000 € di lavori in più (costo ditte)
+const TETTO_ROI = 5;            // Eric 26/10: tetto da rifare = ROI più basso di 5 punti (niente costi in più)
 const ROI_VERDE = 30, ROI_GIALLO = 20;  // semaforo: da confermare con Eric
 const ROI_OBIETTIVO = 30;       // per il "prezzo massimo"
 // Superfici: in alternativa ai mq commerciali si scrivono i mq reali per categoria (Eric 26/10: senza coefficienti,
@@ -365,15 +365,18 @@ function perBp(d) {
     superfici: det.map(x => Object.assign({}, x, {vendita_mq: d.vendita_mq, lavori_mq: STANDARD.lavori_mq})),
     cambio_uso: d.cambio_uso === "si" ? (d.oneri_cambio_uso || 0) : 0,
     caparre: null, caparre_pct: null, mutuo: null, mutuo_pct: MUTUO_PCT, crowd: null, privati: null,
-    // tetto da rifare: lavori = mq × 1.500 + 100.000 (nel business plan è la "cifra totale lavori")
-    lavori_tot: d.tetto === "si" ? (mqTot(d) || 0) * STANDARD.lavori_mq + TETTO_LAVORI : null,
+    lavori_tot: null,
     oneri_manuali: null, investitori: [], crowd_blocchi: [],
   });
 }
 function conto(d) {
   if (!d || !d.prezzo || !mqTot(d) || !d.vendita_mq) return null;
   const v = perBp(d), r = calcola(v);
-  r.prezzo_max = prezzoDa(r, v, r.ricavi / (1 + ROI_OBIETTIVO / 100));
+  // tetto da rifare: il ROI scende di 5 punti; per il prezzo massimo serve quindi un ROI dei numeri più alto di 5
+  const tetto = d.tetto === "si" ? TETTO_ROI : 0;
+  r.roi_numeri = r.roi;
+  if (r.roi !== null) r.roi -= tetto;
+  r.prezzo_max = prezzoDa(r, v, r.ricavi / (1 + (ROI_OBIETTIVO + tetto) / 100));
   r.v = v;
   return r;
 }
@@ -599,7 +602,7 @@ function aggiorna() {
     ["Ricavi", r.ricavi, `${fmt(r.mq_rif, r.mq_rif % 1 ? 1 : 0)} mq × ${fmt(v.vendita_mq)} €/mq`],
     ["Acquisto", r.acquisto],
     ["Notaio e imposte", r.notaio, "(acquisto + due diligence) × 9% + 3.000 €"],
-    ["Ristrutturazione", r.ristrutturazione, `${fmt(STANDARD.lavori_mq)} €/mq${v.lavori_tot ? " + " + euro(TETTO_LAVORI) + " tetto" : ""} + ricarico Edilenergetica ${STANDARD.ricarico_edil}%`],
+    ["Ristrutturazione", r.ristrutturazione, `${fmt(STANDARD.lavori_mq)} €/mq + ricarico Edilenergetica ${STANDARD.ricarico_edil}%`],
     ["Architetto e imprevisti", r.architetto + r.imprevisti, `${STANDARD.architetto_pct}% + 5% dei lavori delle ditte`],
     ["Oneri finanziari", r.oneri_fin, `mutuo ${MUTUO_PCT}% al ${STANDARD.costo_mutuo}% per ${STANDARD.mesi} mesi`],
     ["Spese standard", spese, "due diligence, rendering, assicurazioni, allacci"],
@@ -608,7 +611,8 @@ function aggiorna() {
   ];
   $("esito-det").innerHTML = righe.map(([t, n, s]) => `<div class="voce"><span>${t}${s ? `<small>${s}</small>` : ""}</span><span>${euro(n)}</span></div>`).join("") +
     `<div class="voce tot"><span>Totale costi</span><span>${euro(r.costi)}</span></div>
-     <div class="voce tot"><span>Utile lordo · ROI ${fmt(r.roi)}%</span><span>${euro(r.utile)}</span></div>
+     <div class="voce tot"><span>Utile lordo · ROI ${fmt(r.roi_numeri)}%</span><span>${euro(r.utile)}</span></div>
+     ${r.roi !== r.roi_numeri ? `<div class="voce"><span>Tetto da rifare<small>il ROI scende di ${TETTO_ROI} punti</small></span><span>ROI ${fmt(r.roi)}%</span></div>` : ""}
      <div class="voce max"><span>Prezzo massimo per un ROI del ${ROI_OBIETTIVO}%</span><span>${r.prezzo_max > 0 ? euro(Math.floor(r.prezzo_max / 1000) * 1000) : "non c'è"}</span></div>
      ${cor.dati.cambio_uso === "si" && !cor.dati.oneri_cambio_uso ? `<p class="nota">Cambio d'uso: oneri non ancora inseriti, il conto non li considera.</p>` : ""}`;
 }
