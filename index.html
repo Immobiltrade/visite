@@ -261,7 +261,6 @@ const STANDARD = {
 };
 const ONERI_PCT = 10;           // oneri finanziari = 10% del totale degli altri costi (Eric 26/10); il BP vero si corregge dopo
 const MUTUO_PCT = 50;           // la banca di solito dà il 50% di (acquisto + lavori)
-const TETTO_ROI = 5;            // Eric 26/10: tetto da rifare = ROI più basso di 5 punti (niente costi in più)
 const ROI_VERDE = 30, ROI_GIALLO = 20;  // semaforo: da confermare con Eric
 const ROI_OBIETTIVO = 30;       // per il "prezzo massimo"
 // Superfici: in alternativa ai mq commerciali si scrivono i mq reali per categoria (Eric 26/10: senza coefficienti,
@@ -373,12 +372,9 @@ function perBp(d) {
 function conto(d) {
   if (!d || !d.prezzo || !mqTot(d) || !d.vendita_mq) return null;
   const v = perBp(d), r = calcola(v);
-  // tetto da rifare: il ROI scende di 5 punti; per il prezzo massimo serve quindi un ROI dei numeri più alto di 5
-  const tetto = d.tetto === "si" ? TETTO_ROI : 0;
-  r.roi_numeri = r.roi;
-  if (r.roi !== null) r.roi -= tetto;
+  // tetto da rifare: solo un'informazione, il ROI non cambia (Eric 26/10: così è uguale al business plan del progetto)
   // prezzo massimo: costi totali = ricavi / (1 + ROI), di cui gli oneri sono il 10% degli altri costi
-  const altri = r.ricavi / (1 + (ROI_OBIETTIVO + tetto) / 100) / (1 + ONERI_PCT / 100);
+  const altri = r.ricavi / (1 + ROI_OBIETTIVO / 100) / (1 + ONERI_PCT / 100);
   const resto = r.costi - r.oneri_fin - r.acquisto - r.notaio - r.prov_acquisto;
   r.prezzo_max = (altri - resto - r.due_diligence * 0.09 - 3000) / (1.09 + v.prov_acq_pct / 100);
   r.v = v;
@@ -553,7 +549,7 @@ document.querySelectorAll(".si-no").forEach(g => g.addEventListener("click", e =
   cor.dati[k] = val;
   g.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", String(x.dataset.v === val)));
   if (k === "cambio_uso") { $("oneri_box").hidden = val !== "si"; }
-  if (k === "cambio_uso" || k === "tetto") aggiorna();
+  if (k === "cambio_uso") aggiorna();
   salvaDopo();
 }));
 
@@ -615,8 +611,7 @@ function aggiorna() {
   ];
   $("esito-det").innerHTML = righe.map(([t, n, s]) => `<div class="voce"><span>${t}${s ? `<small>${s}</small>` : ""}</span><span>${euro(n)}</span></div>`).join("") +
     `<div class="voce tot"><span>Totale costi</span><span>${euro(r.costi)}</span></div>
-     <div class="voce tot"><span>Utile lordo · ROI ${fmt(r.roi_numeri)}%</span><span>${euro(r.utile)}</span></div>
-     ${r.roi !== r.roi_numeri ? `<div class="voce"><span>Tetto da rifare<small>il ROI scende di ${TETTO_ROI} punti</small></span><span>ROI ${fmt(r.roi)}%</span></div>` : ""}
+     <div class="voce tot"><span>Utile lordo · ROI ${fmt(r.roi)}%</span><span>${euro(r.utile)}</span></div>
      <div class="voce max"><span>Prezzo massimo per un ROI del ${ROI_OBIETTIVO}%</span><span>${r.prezzo_max > 0 ? euro(Math.floor(r.prezzo_max / 1000) * 1000) : "non c'è"}</span></div>
      ${cor.dati.cambio_uso === "si" && !cor.dati.oneri_cambio_uso ? `<p class="nota">Cambio d'uso: oneri non ancora inseriti, il conto non li considera.</p>` : ""}`;
 }
