@@ -1,0 +1,673 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1d2b44">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Visite">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icona-180.png">
+<title>Visite Immobiltrade</title>
+<style>
+/* Una colonna da usare con il pollice: domande in alto, conto sempre visibile in basso.
+   Niente font esterni né librerie: tutto è già nel telefono, quindi si apre all'istante. */
+:root {
+  --bg: #f3f4f7; --card: #ffffff; --fg: #1d2b44; --muted: #5f6a82; --line: #dce0e8; --chip: #eceef3;
+  --accent: #f7941d; --accent-fg: #1d2b44; --navy: #1d2b44; --navy-fg: #ffffff;
+  --ok: #2e7d32; --warn: #c77700; --bad: #c62828; --grey: #9aa2b1;
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #10151e; --card: #19202d; --fg: #eef1f6; --muted: #9ba4b6; --line: #2b3446; --chip: #242d3e;
+  --navy: #0b0f16; --navy-fg: #eef1f6; --ok: #5cb860; --warn: #f0a33a; --bad: #ef5350; --grey: #6b7486; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #10151e; --card: #19202d; --fg: #eef1f6; --muted: #9ba4b6; --line: #2b3446; --chip: #242d3e;
+  --navy: #0b0f16; --navy-fg: #eef1f6; --ok: #5cb860; --warn: #f0a33a; --bad: #ef5350; --grey: #6b7486; color-scheme: dark }
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent }
+html, body { margin: 0 }
+body { background: var(--bg); color: var(--fg); font: 16px/1.4 var(--font); -webkit-text-size-adjust: 100% }
+button, input { font: inherit; color: inherit }
+button { cursor: pointer; touch-action: manipulation }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px }
+[hidden] { display: none !important }
+
+.barra { position: sticky; top: 0; z-index: 5; background: var(--navy); color: var(--navy-fg);
+  padding: calc(env(safe-area-inset-top, 0px) + 10px) max(16px, env(safe-area-inset-right, 0px)) 10px max(16px, env(safe-area-inset-left, 0px));
+  display: flex; align-items: center; gap: 10px; min-height: 52px }
+.barra h1 { font-size: 18px; margin: 0; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.barra h1 b { color: var(--accent) }
+.barra .indietro { background: none; border: 0; color: var(--navy-fg); padding: 6px 8px 6px 0; font-size: 17px }
+.salvato { font-size: 13px; opacity: .75; white-space: nowrap }
+
+main { padding: 14px max(16px, env(safe-area-inset-right, 0px)) 24px max(16px, env(safe-area-inset-left, 0px));
+  max-width: 560px; margin: 0 auto; display: grid; gap: 12px }
+#visita { padding-bottom: 150px }
+
+.grande { width: 100%; border: 0; border-radius: 14px; padding: 18px; font-size: 19px; font-weight: 700;
+  background: var(--accent); color: var(--accent-fg) }
+.nota { font-size: 13px; color: var(--muted) }
+.vuoto { color: var(--muted); text-align: center; padding: 24px 8px; margin: 0 }
+
+.riga { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; background: var(--card);
+  border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px }
+.riga-t { flex: 1; min-width: 0; display: grid }
+.riga-t b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.riga-t small { color: var(--muted) }
+.riga-roi { font-weight: 700; font-variant-numeric: tabular-nums }
+
+.sem { width: 14px; height: 14px; border-radius: 50%; flex: none; background: var(--grey) }
+.sem.verde { background: var(--ok) } .sem.giallo { background: var(--warn) } .sem.rosso { background: var(--bad) }
+
+.blocco { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 4px 14px }
+.titolo-blocco { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 6px 2px -4px }
+.campo { padding: 12px 0; border-bottom: 1px solid var(--line); display: grid; gap: 8px }
+.campo:last-child { border-bottom: 0 }
+.campo > label, .etichetta { font-weight: 600 }
+.num { display: flex; align-items: center; gap: 8px }
+.num input, .testo { flex: 1; min-width: 0; width: 100%; border: 1px solid var(--line); border-radius: 10px; background: var(--bg);
+  padding: 12px; font-size: 20px; font-variant-numeric: tabular-nums }
+.testo { font-size: 17px }
+.num input[readonly] { color: var(--muted) }
+.unita { color: var(--muted); font-size: 15px; white-space: nowrap }
+.piu { border: 1px solid var(--accent); color: var(--fg); background: none; border-radius: 10px; padding: 11px 12px; font-weight: 600; white-space: nowrap }
+.piu[aria-expanded="true"] { background: var(--accent); color: var(--accent-fg) }
+
+.dettaglio { display: grid; gap: 6px; background: var(--bg); border-radius: 10px; padding: 10px }
+.det { display: grid; grid-template-columns: 1fr 110px; gap: 6px; align-items: center }
+.det input { width: 100%; border: 1px solid var(--line); border-radius: 8px; background: var(--card); padding: 9px 8px; font-size: 17px; text-align: right; font-variant-numeric: tabular-nums }
+.det-int { font-size: 12px; color: var(--muted) }
+
+.si-no { display: flex; gap: 8px; flex-wrap: wrap }
+.si-no button { flex: 1; min-width: 72px; border: 1px solid var(--line); background: var(--chip); border-radius: 10px; padding: 12px 8px; font-weight: 600 }
+.si-no button[aria-pressed="true"] { background: var(--navy); color: var(--navy-fg); border-color: var(--navy) }
+.si-no button.si[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); border-color: var(--accent) }
+.riga-sn { display: flex; align-items: center; justify-content: space-between; gap: 12px }
+.riga-sn .si-no { flex: none; width: 190px }
+.riga-sn .si-no.tre { width: 230px }
+.riga-sn .si-no button { min-width: 0 }
+
+.passo { display: flex; align-items: center; gap: 4px }
+.passo button { width: 48px; height: 48px; border-radius: 10px; border: 1px solid var(--line); background: var(--chip); font-size: 22px; font-weight: 700 }
+.passo output { min-width: 44px; text-align: center; font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums }
+
+.rec { width: 100%; border: 0; border-radius: 14px; padding: 16px; display: flex; align-items: center; justify-content: center; gap: 10px;
+  background: var(--navy); color: var(--navy-fg); font-size: 18px; font-weight: 700 }
+.rec .pallino { width: 16px; height: 16px; border-radius: 50%; background: var(--bad) }
+.rec.attivo { background: var(--bad); color: #fff }
+.rec.attivo .pallino { background: #fff; animation: pulsa 1s infinite }
+@keyframes pulsa { 50% { opacity: .3 } }
+@media (prefers-reduced-motion: reduce) { .rec.attivo .pallino { animation: none } }
+.audio { display: flex; align-items: center; gap: 8px }
+.audio audio { flex: 1; min-width: 0; height: 40px }
+.x { border: 1px solid var(--line); background: none; border-radius: 8px; padding: 8px 10px; font-size: 14px; color: var(--muted) }
+.x.conferma { background: var(--bad); color: #fff; border-color: var(--bad) }
+
+.foto-btn { display: flex; align-items: center; justify-content: center; gap: 8px; border: 1px dashed var(--muted); border-radius: 14px; padding: 14px; font-weight: 700 }
+.galleria { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px }
+.galleria figure { margin: 0; position: relative; aspect-ratio: 1; max-width: 100% }
+.galleria img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; display: block }
+.galleria .x { position: absolute; top: 4px; right: 4px; background: rgba(0,0,0,.55); color: #fff; border: 0; padding: 4px 8px }
+
+.fine { display: grid; gap: 10px; margin-top: 4px }
+.secondario { width: 100%; border: 1px solid var(--line); background: none; border-radius: 12px; padding: 14px; font-weight: 600; color: var(--muted) }
+.secondario.conferma { background: var(--bad); color: #fff; border-color: var(--bad) }
+
+/* conto sempre visibile in basso */
+.esito { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; background: var(--card); border-top: 1px solid var(--line);
+  box-shadow: 0 -6px 20px rgba(0,0,0,.08);
+  padding: 10px max(16px, env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)) }
+.esito-in { max-width: 560px; margin: 0 auto }
+.esito-top { display: flex; align-items: center; gap: 12px; width: 100%; background: none; border: 0; padding: 4px 0; text-align: left }
+.esito-top .sem { width: 22px; height: 22px }
+.esito-roi { font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums }
+.esito-utile { flex: 1; min-width: 0; display: grid; font-size: 14px; color: var(--muted) }
+.esito-utile b { color: var(--fg); font-size: 16px; font-variant-numeric: tabular-nums }
+.freccia { color: var(--muted); font-size: 14px }
+.esito-det { max-height: 52vh; overflow: auto; padding-top: 6px; border-top: 1px solid var(--line); margin-top: 6px }
+.voce { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; font-size: 15px }
+.voce span:last-child { font-variant-numeric: tabular-nums; white-space: nowrap }
+.voce small { display: block; color: var(--muted); font-size: 12px }
+.voce.tot { font-weight: 800; border-top: 1px solid var(--line); margin-top: 4px; padding-top: 8px }
+.voce.max { background: var(--chip); border-radius: 8px; padding: 8px 10px; margin-top: 8px; font-weight: 700 }
+.avviso { position: fixed; left: 16px; right: 16px; top: calc(env(safe-area-inset-top, 0px) + 64px); z-index: 9; background: var(--navy); color: var(--navy-fg);
+  border-radius: 12px; padding: 12px 14px; font-size: 15px; box-shadow: 0 6px 20px rgba(0,0,0,.25); max-width: 528px; margin: 0 auto }
+</style>
+</head>
+<body>
+
+<header class="barra">
+  <button class="indietro" id="indietro" hidden aria-label="Torna all'elenco delle visite">‹ Visite</button>
+  <h1 id="titolo"><b>Visite</b> Immobiltrade</h1>
+  <span class="salvato" id="salvato"></span>
+</header>
+
+<main id="home">
+  <button class="grande" id="nuova">+ Nuova visita</button>
+  <div id="elenco" style="display:grid;gap:8px"></div>
+  <p class="nota" id="nota-home">Le visite restano salvate sul telefono, anche senza campo.</p>
+</main>
+
+<main id="visita" hidden>
+  <div class="blocco">
+    <div class="campo">
+      <label for="f_nome">Indirizzo o nome</label>
+      <input class="testo" id="f_nome" autocomplete="off" placeholder="es. Via Roma 12, Torino">
+      <span class="nota" id="pos">Cerco la posizione…</span>
+    </div>
+  </div>
+
+  <div class="titolo-blocco">I numeri</div>
+  <div class="blocco">
+    <div class="campo">
+      <label for="f_prezzo">Prezzo a cui si può chiudere</label>
+      <div class="num"><input id="f_prezzo" inputmode="decimal" autocomplete="off" placeholder="es. 285"><span class="unita">mila €</span></div>
+    </div>
+    <div class="campo">
+      <label for="f_mq">Mq commerciali</label>
+      <div class="num"><input id="f_mq" inputmode="decimal" autocomplete="off" placeholder="es. 120"><span class="unita">mq</span>
+        <button class="piu" id="piu" aria-expanded="false" aria-controls="dettaglio">+ dettaglio</button></div>
+      <div class="dettaglio" id="dettaglio" hidden></div>
+    </div>
+    <div class="campo">
+      <label for="f_vendita">Prezzo di rivendita al mq</label>
+      <div class="num"><input id="f_vendita" inputmode="decimal" autocomplete="off" placeholder="es. 4.200"><span class="unita">€/mq</span></div>
+    </div>
+  </div>
+
+  <div class="titolo-blocco">L'edificio</div>
+  <div class="blocco">
+    <div class="campo riga-sn">
+      <span class="etichetta">Piani dell'edificio</span>
+      <div class="passo"><button data-passo="-1" aria-label="Un piano in meno">−</button><output id="f_piani">–</output><button data-passo="1" aria-label="Un piano in più">+</button></div>
+    </div>
+    <div class="campo riga-sn"><span class="etichetta">Tetto da rifare</span>
+      <div class="si-no" data-k="tetto"><button class="si" data-v="si">Sì</button><button data-v="no">No</button></div></div>
+    <div class="campo riga-sn"><span class="etichetta">Posti auto / garage realizzabili</span>
+      <div class="si-no" data-k="posti_auto"><button class="si" data-v="si">Sì</button><button data-v="no">No</button></div></div>
+    <div class="campo riga-sn"><span class="etichetta">Difformità o abusi</span>
+      <div class="si-no tre" data-k="difformita"><button class="si" data-v="si">Sì</button><button data-v="no">No</button><button data-v="non_so">Non so</button></div></div>
+    <div class="campo riga-sn"><span class="etichetta">Vincoli</span>
+      <div class="si-no tre" data-k="vincoli"><button class="si" data-v="si">Sì</button><button data-v="no">No</button><button data-v="non_so">Non so</button></div></div>
+    <div class="campo">
+      <div class="riga-sn"><span class="etichetta">Serve il cambio di destinazione d'uso</span>
+        <div class="si-no" data-k="cambio_uso"><button class="si" data-v="si">Sì</button><button data-v="no">No</button></div></div>
+      <div class="num" id="oneri_box" hidden><input id="f_oneri" inputmode="decimal" autocomplete="off" placeholder="oneri al Comune, se li sai"><span class="unita">€</span></div>
+    </div>
+  </div>
+
+  <div class="titolo-blocco">A voce e foto</div>
+  <div class="blocco">
+    <div class="campo">
+      <button class="rec" id="rec"><span class="pallino"></span><span id="rec-t">Registra un vocale</span></button>
+      <span class="nota">Racconta tutto il resto: stato, impianti, condominio, venditore… In ufficio il Mac lo trascrive e compila il progetto.</span>
+      <div id="audio" style="display:grid;gap:6px"></div>
+    </div>
+    <div class="campo">
+      <label class="foto-btn" for="f_foto">Scatta o aggiungi foto</label>
+      <input type="file" id="f_foto" accept="image/*" capture="environment" multiple hidden>
+      <div class="galleria" id="galleria"></div>
+    </div>
+  </div>
+
+  <div class="fine">
+    <button class="grande" id="conclusa">Visita conclusa</button>
+    <button class="secondario" id="elimina">Elimina questa visita</button>
+  </div>
+</main>
+
+<footer class="esito" id="esito" hidden>
+  <div class="esito-in">
+    <button class="esito-top" id="esito-top" aria-expanded="false" aria-controls="esito-det">
+      <span class="sem" id="e-sem"></span>
+      <span class="esito-roi" id="e-roi">–</span>
+      <span class="esito-utile" id="e-utile"></span>
+      <span class="freccia" id="e-freccia">dettagli ▲</span>
+    </button>
+    <div class="esito-det" id="esito-det" hidden></div>
+  </div>
+</footer>
+
+<div class="avviso" id="avviso" hidden role="status"></div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+
+// ---------- valori standard del business plan (gli stessi di immo/bp.py nell'App Immobiltrade)
+const STANDARD = {
+  lavori_mq: 1500, ricarico_edil: 15, architetto_pct: 8, due_diligence: 5000, rendering: 5000, assicurazioni: 20000,
+  allacci: 5000, prov_acq_pct: 4, prov_ven_pct: 2, mesi: 24,
+  costo_caparre: 0, costo_mutuo: 5, costo_crowd: 12, costo_privati: 10, margine_pct: 30,
+};
+const MUTUO_PCT = 50;           // la banca di solito dà il 50% di (acquisto + lavori)
+const ROI_VERDE = 30, ROI_GIALLO = 20;  // semaforo: da confermare con Eric
+const ROI_OBIETTIVO = 30;       // per il "prezzo massimo"
+// Superfici: in alternativa ai mq commerciali si scrivono i mq reali per categoria (Eric 26/10: senza coefficienti,
+// il conto usa la somma)
+const CATEGORIE = ["Residenziale", "Giardino", "Garage / box", "Posti auto esterni", "Cantine"];
+const nuovoDettaglio = () => CATEGORIE.map(categoria => ({categoria, mq_reali: null}));
+const CFG = {
+  righe: ["acquisto", "due_diligence", "notaio", "ristrutturazione", "architetto", "oneri_fin", "rendering",
+          "assicurazioni", "imprevisti", "allacci", "cambio_uso", "prov_acquisto", "prov_vendita"].map(k => [k]),
+  fonti: [["caparre", "", "costo_caparre"], ["mutuo", "", "costo_mutuo"], ["crowd", "", "costo_crowd"], ["privati", "", "costo_privati"]],
+};
+
+// ---------- calcolo: copiato da immo/bp_comp/index.html (stesse formule di immo/bp.py). Se cambia lì, va cambiato qui.
+function calcola(v, rx = 1, lx = 1) {
+  const g = k => Number(v[k] || 0), r = {};
+  for (const k of ["acquisto", "due_diligence", "rendering", "assicurazioni", "allacci", "cambio_uso"]) r[k] = g(k);
+  const sup = (v.superfici || []).filter(x => Number(x.mq) > 0), f = (x, k) => Number(x[k] || 0);
+  r.ricavi = (sup.length ? sup.reduce((s, x) => s + f(x, "mq") * f(x, "vendita_mq"), 0) : g("mq") * g("vendita_mq")) * rx;
+  r.mq_rif = g("mq") || sup.reduce((s, x) => s + f(x, "mq"), 0);
+  r.lavori_ditte = (v.lavori_tot ? v.lavori_tot : sup.length ? sup.reduce((s, x) => s + f(x, "mq") * f(x, "lavori_mq"), 0)
+    : g("mq") * g("lavori_mq")) * lx;
+  r.ristrutturazione = r.lavori_ditte * (1 + g("ricarico_edil") / 100);
+  r.ricarico_edil = r.ristrutturazione - r.lavori_ditte;
+  r.notaio = r.acquisto ? (r.acquisto + r.due_diligence) * 0.09 + 3000 : 0;
+  r.architetto = r.lavori_ditte * g("architetto_pct") / 100;
+  r.imprevisti = r.lavori_ditte * 0.05;
+  r.prov_acquisto = r.acquisto * g("prov_acq_pct") / 100;
+  r.prov_vendita = r.ricavi * g("prov_ven_pct") / 100;
+  if (v.caparre === null && v.caparre_pct !== null && v.caparre_pct !== undefined)
+    v = Object.assign({}, v, {caparre: r.ricavi * v.caparre_pct / 100});
+  if (v.mutuo === null && v.mutuo_pct !== null && v.mutuo_pct !== undefined)
+    v = Object.assign({}, v, {mutuo: (r.acquisto + r.ristrutturazione) * v.mutuo_pct / 100});
+  const base = CFG.righe.filter(x => x[0] !== "oneri_fin").reduce((s, x) => s + r[x[0]], 0);
+  const eff = m => { const M = g("mesi"); const mm = Math.min(Math.max(Number(m) || 1, 1), Math.max(M, 1)); return Math.max(M - (mm - 1), 0) / 12; };
+  const costo = {}; for (const [k, , ck] of CFG.fonti) costo[k] = g(ck) / 100 * eff(v["mese_" + k]);
+  const conInv = (v.investitori || []).some(x => Number(x.importo));
+  if (conInv) costo.privati = 0;
+  const aggPrivati = !conInv ? 0 : v.investitori.reduce((s, x) => s + (Number(x.importo) || 0) * g("costo_privati") / 100 * eff(x.mese), 0);
+  const blocchi = (v.crowd_blocchi || []).filter(x => Number(x.importo));
+  if (blocchi.length) { v = Object.assign({}, v, {crowd: blocchi.reduce((s, x) => s + Number(x.importo), 0)}); costo.crowd = 0; }
+  const aggCrowd = blocchi.reduce((s, x) => s + Number(x.importo) * g("costo_crowd") / 100 * eff(x.mese), 0);
+  const vuote = CFG.fonti.map(f => f[0]).filter(k => v[k] === null);
+  const pieni = CFG.fonti.reduce((s, f) => s + Number(v[f[0]] || 0), 0);
+  let oneriPieni = CFG.fonti.reduce((s, f) => s + Number(v[f[0]] || 0) * costo[f[0]], 0) + aggPrivati + aggCrowd;
+  const manuali = v.oneri_manuali !== null && v.oneri_manuali !== undefined;
+  if (manuali) { for (const k in costo) costo[k] = 0; oneriPieni = Number(v.oneri_manuali) || 0; }
+  r.fonti = {}; for (const [k] of CFG.fonti) r.fonti[k] = Number(v[k] || 0);
+  r.auto = null;
+  if (vuote.length === 1) {
+    const c = costo[vuote[0]];
+    const t = (base + oneriPieni - pieni * c) / (1 - c);
+    if (t > pieni) { r.fonti[vuote[0]] = t - pieni; r.auto = vuote[0]; }
+  }
+  r.oneri_fonte = {}; for (const k of Object.keys(r.fonti)) r.oneri_fonte[k] = r.fonti[k] * costo[k];
+  if (!manuali) { r.oneri_fonte.privati += aggPrivati; r.oneri_fonte.crowd += aggCrowd; }
+  r.oneri_fin = manuali ? oneriPieni : Object.values(r.oneri_fonte).reduce((a, b) => a + b, 0);
+  r.costi = base + r.oneri_fin;
+  r.utile = r.ricavi - r.costi;
+  r.roi = r.costi ? r.utile / r.costi * 100 : null;
+  r.scoperto = r.costi - Object.values(r.fonti).reduce((a, b) => a + b, 0);
+  r.vuote = vuote;
+  const mk = g("ricarico_edil") / 100;
+  r.margine = (r.ricavi - r.acquisto) * g("margine_pct") / 100;
+  const obiettivo = r.ricavi - r.margine;
+  r.spese_fisse = ["due_diligence", "notaio", "rendering", "assicurazioni", "allacci", "cambio_uso", "prov_acquisto", "prov_vendita"]
+    .reduce((s, k) => s + r[k], 0);
+  r.oneri_budget = oneriPieni + (vuote.length === 1 ? Math.max(obiettivo - pieni, 0) * costo[vuote[0]] : 0);
+  const prof = (g("architetto_pct") + 5) / 100;
+  const ditte = (obiettivo - r.oneri_budget - r.spese_fisse - r.acquisto) / (1 + mk + prof);
+  r.budget_edil = ditte;
+  r.prof_budget = ditte * prof;
+  r.budget_ristrutturazione = ditte * (1 + mk);
+  r.par = {oneriPieni, pieni, mk, prof, c: vuote.length === 1 ? costo[vuote[0]] : null};
+  return r;
+}
+// Prezzo di acquisto che dà esattamente il totale costi "obiettivo" (copiato da immo/bp_comp/index.html)
+function prezzoDa(r, v, obiettivo) {
+  const p = r.par, pct = Number(v.prov_acq_pct || 0) / 100;
+  const oneri = p.oneriPieni + (p.c !== null ? Math.max(obiettivo - p.pieni, 0) * p.c : 0);
+  const base = CFG.righe.filter(x => x[0] !== "oneri_fin").reduce((s, x) => s + r[x[0]], 0);
+  const resto = base - r.acquisto - r.notaio - r.prov_acquisto;
+  return (obiettivo - oneri - resto - r.due_diligence * 0.09 - 3000) / (1.09 + pct);
+}
+
+// ---------- dalla visita ai campi del business plan (stessi nomi di immo/bp.py: così l'app li legge senza ricopiare)
+const daK = n => n === null ? null : (n < 10000 ? n * 1000 : n);  // 285 = 285.000 € (come nel business plan)
+function righeDettaglio(d) {
+  return (d.dettaglio || []).filter(x => Number(x.mq_reali) > 0)
+    .map(x => ({categoria: x.categoria, mq: x.mq_reali}));
+}
+function mqTot(d) {
+  const det = righeDettaglio(d);
+  return det.length ? det.reduce((s, x) => s + x.mq, 0) : d.mq;
+}
+function perBp(d) {
+  const det = righeDettaglio(d);
+  return Object.assign({}, STANDARD, {
+    acquisto: daK(d.prezzo), mq: mqTot(d), vendita_mq: d.vendita_mq,
+    superfici: det.map(x => Object.assign({}, x, {vendita_mq: d.vendita_mq, lavori_mq: STANDARD.lavori_mq})),
+    cambio_uso: d.cambio_uso === "si" ? (d.oneri_cambio_uso || 0) : 0,
+    caparre: null, caparre_pct: null, mutuo: null, mutuo_pct: MUTUO_PCT, crowd: null, privati: null,
+    lavori_tot: null, oneri_manuali: null, investitori: [], crowd_blocchi: [],
+  });
+}
+function conto(d) {
+  if (!d || !d.prezzo || !mqTot(d) || !d.vendita_mq) return null;
+  const v = perBp(d), r = calcola(v);
+  r.prezzo_max = prezzoDa(r, v, r.ricavi / (1 + ROI_OBIETTIVO / 100));
+  r.v = v;
+  return r;
+}
+const semaforo = r => !r || r.roi === null ? "" : r.roi >= ROI_VERDE ? "verde" : r.roi >= ROI_GIALLO ? "giallo" : "rosso";
+
+// ---------- numeri all'italiana
+function numero(s) {
+  s = String(s ?? "").replace(/[\s€]/g, "");
+  if (!s) return null;
+  if (s.includes(",")) s = s.replace(/\./g, "").replace(",", ".");
+  else if (/^\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, "");
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
+function fmt(n, dec = 0) {  // 1.500 e 285,5 (sempre con i puntini, anche sotto i 10.000)
+  if (n === null || n === undefined || !Number.isFinite(n)) return "–";
+  const [i, d] = Math.abs(n).toFixed(dec).split(".");
+  return (n < 0 && Number(i + (d || "")) ? "-" : "") + i.replace(/\B(?=(\d{3})+(?!\d))/g, ".") + (d ? "," + d : "");
+}
+const euro = n => fmt(Math.round(n)) + " €";
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+const dataIt = iso => { const d = new Date(iso); return d.toLocaleDateString("it-IT", {day: "numeric", month: "short"}) + " " +
+  d.toLocaleTimeString("it-IT", {hour: "2-digit", minute: "2-digit"}); };
+
+// ---------- archivio sul telefono (IndexedDB): visite + file (vocali e foto)
+let _db = null;
+function apri() {
+  if (_db) return Promise.resolve(_db);
+  return new Promise((ok, ko) => {
+    const r = indexedDB.open("visite-immobiltrade", 1);
+    r.onupgradeneeded = () => {
+      const db = r.result;
+      db.createObjectStore("visite", {keyPath: "id"});
+      db.createObjectStore("file", {keyPath: "id"}).createIndex("visita", "visita");
+    };
+    r.onsuccess = () => ok(_db = r.result);
+    r.onerror = () => ko(r.error);
+  });
+}
+async function tx(store, modo, fn) {
+  const db = await apri();
+  return new Promise((ok, ko) => {
+    const t = db.transaction(store, modo), req = fn(t.objectStore(store));
+    t.oncomplete = () => ok(req ? req.result : undefined);
+    t.onerror = () => ko(t.error);
+  });
+}
+const metti = (store, x) => tx(store, "readwrite", s => s.put(x));
+const tutte = store => tx(store, "readonly", s => s.getAll());
+const una = (store, id) => tx(store, "readonly", s => s.get(id));
+const togli = (store, id) => tx(store, "readwrite", s => s.delete(id));
+const fileDi = id => tx("file", "readonly", s => s.index("visita").getAll(id));
+const nuovoId = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
+
+function avviso(testo) {
+  const a = $("avviso"); a.textContent = testo; a.hidden = false;
+  clearTimeout(avviso.t); avviso.t = setTimeout(() => { a.hidden = true; }, 4000);
+}
+
+// ---------- elenco delle visite
+let cor = null;  // visita aperta
+async function home() {
+  cor = null;
+  $("home").hidden = false; $("visita").hidden = true; $("esito").hidden = true;
+  $("indietro").hidden = true; $("titolo").innerHTML = "<b>Visite</b> Immobiltrade"; $("salvato").textContent = "";
+  let v = [];
+  try { v = await tutte("visite"); } catch (e) { avviso("Il telefono non permette di salvare: esci dalla navigazione privata."); }
+  v.sort((a, b) => b.creata.localeCompare(a.creata));
+  $("elenco").innerHTML = v.length ? v.map(x => {
+    const r = conto(x.dati), mq = mqTot(x.dati);
+    return `<button class="riga" data-id="${x.id}"><span class="sem ${semaforo(r)}"></span>
+      <span class="riga-t"><b>${esc(x.nome || "Visita senza nome")}</b>
+      <small>${dataIt(x.creata)}${mq ? " · " + fmt(mq) + " mq" : ""}${x.stato === "conclusa" ? " · conclusa" : ""}</small></span>
+      <span class="riga-roi">${r && r.roi !== null ? "ROI " + fmt(r.roi) + "%" : "–"}</span></button>`;
+  }).join("") : `<p class="vuoto">Nessuna visita ancora.<br>Tocca <b>Nuova visita</b> quando entri in un immobile: data, ora e posizione si salvano da sole.</p>`;
+}
+$("elenco").addEventListener("click", async e => {
+  const b = e.target.closest(".riga"); if (!b) return;
+  const v = await una("visite", b.dataset.id); if (v) apriVisita(v);
+});
+$("nuova").addEventListener("click", async () => {
+  const v = {id: nuovoId(), creata: new Date().toISOString(), aggiornata: new Date().toISOString(), nome: "", pos: null,
+             stato: "bozza", dati: {dettaglio: nuovoDettaglio()}};
+  await metti("visite", v);
+  apriVisita(v);
+  prendiPosizione(v);
+  try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch (e) {}
+});
+$("indietro").addEventListener("click", async () => { await salvaOra(); home(); });
+
+// ---------- la visita
+function apriVisita(v) {
+  cor = v;
+  const d = v.dati;
+  if (!d.dettaglio || d.dettaglio.some(x => "coeff" in x)) d.dettaglio = nuovoDettaglio();
+  $("home").hidden = true; $("visita").hidden = false; $("esito").hidden = false;
+  $("indietro").hidden = false; $("titolo").textContent = v.nome || "Nuova visita"; $("salvato").textContent = "";
+  $("f_nome").value = v.nome || "";
+  $("f_prezzo").value = d.prezzo === undefined || d.prezzo === null ? "" : fmt(d.prezzo, d.prezzo % 1 ? 1 : 0);
+  $("f_vendita").value = d.vendita_mq ? fmt(d.vendita_mq) : "";
+  $("f_oneri").value = d.oneri_cambio_uso ? fmt(d.oneri_cambio_uso) : "";
+  $("f_piani").textContent = d.piani ?? "–";
+  document.querySelectorAll(".si-no").forEach(g => g.querySelectorAll("button").forEach(b =>
+    b.setAttribute("aria-pressed", String(d[g.dataset.k] === b.dataset.v))));
+  $("oneri_box").hidden = d.cambio_uso !== "si";
+  const conDet = righeDettaglio(d).length > 0;
+  disegnaDettaglio(); mostraDettaglio(conDet);
+  $("elimina").classList.remove("conferma"); $("elimina").textContent = "Elimina questa visita";
+  mostraPosizione();
+  aggiorna(); mostraFile();
+  window.scrollTo(0, 0);
+}
+
+function prendiPosizione(v) {
+  if (!navigator.geolocation) { v.pos = {errore: true}; mostraPosizione(); return; }
+  navigator.geolocation.getCurrentPosition(p => {
+    v.pos = {lat: p.coords.latitude, lon: p.coords.longitude, precisione: Math.round(p.coords.accuracy)};
+    if (cor && cor.id === v.id) mostraPosizione();
+    salvaDopo();
+  }, () => { v.pos = {errore: true}; if (cor && cor.id === v.id) mostraPosizione(); salvaDopo(); },
+  {enableHighAccuracy: true, timeout: 15000, maximumAge: 60000});
+}
+function mostraPosizione() {
+  const p = cor.pos, el = $("pos");
+  if (!p) { el.textContent = "Cerco la posizione…"; return; }
+  if (p.errore) { el.innerHTML = `Posizione non disponibile. <a href="#" id="riprova">Riprova</a>`; return; }
+  el.innerHTML = `Posizione salvata (±${p.precisione} m) · <a href="https://maps.google.com/?q=${p.lat},${p.lon}" target="_blank" rel="noopener">vedi sulla mappa</a> · ${dataIt(cor.creata)}`;
+}
+$("pos").addEventListener("click", e => { if (e.target.id === "riprova") { e.preventDefault(); cor.pos = null; mostraPosizione(); prendiPosizione(cor); } });
+
+// campi di testo e numeri
+$("f_nome").addEventListener("input", e => { cor.nome = e.target.value.trim(); $("titolo").textContent = cor.nome || "Nuova visita"; salvaDopo(); });
+for (const [id, k] of [["f_prezzo", "prezzo"], ["f_mq", "mq"], ["f_vendita", "vendita_mq"], ["f_oneri", "oneri_cambio_uso"]]) {
+  $(id).addEventListener("input", e => { cor.dati[k] = numero(e.target.value); aggiorna(); salvaDopo(); });
+  $(id).addEventListener("blur", e => { const n = numero(e.target.value); if (n !== null && k !== "prezzo") e.target.value = fmt(n); });
+}
+// piani
+document.querySelectorAll("[data-passo]").forEach(b => b.addEventListener("click", () => {
+  const n = Math.max(1, Math.min(40, (cor.dati.piani || 0) + Number(b.dataset.passo)));
+  cor.dati.piani = n; $("f_piani").textContent = n; salvaDopo();
+}));
+// sì / no (toccando di nuovo la scelta la si toglie)
+document.querySelectorAll(".si-no").forEach(g => g.addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  const k = g.dataset.k, val = cor.dati[k] === b.dataset.v ? null : b.dataset.v;
+  cor.dati[k] = val;
+  g.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", String(x.dataset.v === val)));
+  if (k === "cambio_uso") { $("oneri_box").hidden = val !== "si"; aggiorna(); }
+  salvaDopo();
+}));
+
+// dettaglio delle superfici
+function disegnaDettaglio() {
+  $("dettaglio").innerHTML = `<div class="det det-int"><span>Superficie</span><span style="text-align:right">mq reali</span></div>` +
+    cor.dati.dettaglio.map((x, i) => `<div class="det"><span>${esc(x.categoria)}</span>
+      <input inputmode="decimal" data-i="${i}" data-c="mq_reali" value="${x.mq_reali ? fmt(x.mq_reali) : ""}" aria-label="${esc(x.categoria)}: mq reali"></div>`).join("") +
+    `<span class="nota">Se scrivi i mq reali, il conto usa la loro somma al posto dei mq commerciali.</span>`;
+}
+function mostraDettaglio(aperto) {
+  $("dettaglio").hidden = !aperto;
+  $("piu").setAttribute("aria-expanded", String(aperto));
+  $("piu").textContent = aperto ? "chiudi" : "+ dettaglio";
+  const conDet = righeDettaglio(cor.dati).length > 0;
+  $("f_mq").readOnly = conDet;
+  const mq = mqTot(cor.dati);
+  if (document.activeElement !== $("f_mq")) $("f_mq").value = mq ? fmt(mq, mq % 1 ? 1 : 0) : "";
+}
+$("piu").addEventListener("click", () => {
+  const aperto = $("dettaglio").hidden;
+  // aprendo il dettaglio, i mq già scritti diventano i mq residenziali
+  if (aperto && !righeDettaglio(cor.dati).length && cor.dati.mq) { cor.dati.dettaglio[0].mq_reali = cor.dati.mq; disegnaDettaglio(); }
+  mostraDettaglio(aperto); aggiorna(); salvaDopo();
+});
+$("dettaglio").addEventListener("input", e => {
+  const t = e.target; if (!t.dataset.c) return;
+  cor.dati.dettaglio[Number(t.dataset.i)][t.dataset.c] = numero(t.value);
+  const conDet = righeDettaglio(cor.dati).length > 0;
+  if (!conDet) cor.dati.mq = null;
+  mostraDettaglio(true); aggiorna(); salvaDopo();
+});
+
+// ---------- conto sempre visibile
+function aggiorna() {
+  if (!cor) return;
+  const r = conto(cor.dati);
+  $("e-sem").className = "sem " + semaforo(r);
+  if (!r) {
+    $("e-roi").textContent = "–";
+    $("e-utile").innerHTML = `<span>Scrivi prezzo, mq e rivendita al mq per vedere il conto</span>`;
+    $("e-freccia").hidden = true; $("esito-det").hidden = true; $("esito-top").setAttribute("aria-expanded", "false");
+    return;
+  }
+  $("e-freccia").hidden = false;
+  $("e-roi").textContent = "ROI " + fmt(r.roi) + "%";
+  $("e-utile").innerHTML = `<span>utile lordo</span><b>${euro(r.utile)}</b>`;
+  const v = r.v, spese = r.due_diligence + r.rendering + r.assicurazioni + r.allacci;
+  const righe = [
+    ["Ricavi", r.ricavi, `${fmt(r.mq_rif, r.mq_rif % 1 ? 1 : 0)} mq × ${fmt(v.vendita_mq)} €/mq`],
+    ["Acquisto", r.acquisto],
+    ["Notaio e imposte", r.notaio, "(acquisto + due diligence) × 9% + 3.000 €"],
+    ["Ristrutturazione", r.ristrutturazione, `${fmt(STANDARD.lavori_mq)} €/mq + ricarico Edilenergetica ${STANDARD.ricarico_edil}%`],
+    ["Architetto e imprevisti", r.architetto + r.imprevisti, `${STANDARD.architetto_pct}% + 5% dei lavori delle ditte`],
+    ["Oneri finanziari", r.oneri_fin, `mutuo ${MUTUO_PCT}% al ${STANDARD.costo_mutuo}% per ${STANDARD.mesi} mesi`],
+    ["Spese standard", spese, "due diligence, rendering, assicurazioni, allacci"],
+    ...(r.cambio_uso ? [["Oneri cambio d'uso", r.cambio_uso]] : []),
+    ["Provvigioni agenzie", r.prov_acquisto + r.prov_vendita, `${STANDARD.prov_acq_pct}% acquisto + ${STANDARD.prov_ven_pct}% vendita`],
+  ];
+  $("esito-det").innerHTML = righe.map(([t, n, s]) => `<div class="voce"><span>${t}${s ? `<small>${s}</small>` : ""}</span><span>${euro(n)}</span></div>`).join("") +
+    `<div class="voce tot"><span>Totale costi</span><span>${euro(r.costi)}</span></div>
+     <div class="voce tot"><span>Utile lordo · ROI ${fmt(r.roi)}%</span><span>${euro(r.utile)}</span></div>
+     <div class="voce max"><span>Prezzo massimo per un ROI del ${ROI_OBIETTIVO}%</span><span>${r.prezzo_max > 0 ? euro(Math.floor(r.prezzo_max / 1000) * 1000) : "non c'è"}</span></div>
+     ${cor.dati.cambio_uso === "si" && !cor.dati.oneri_cambio_uso ? `<p class="nota">Cambio d'uso: oneri non ancora inseriti, il conto non li considera.</p>` : ""}`;
+}
+$("esito-top").addEventListener("click", () => {
+  if ($("e-freccia").hidden) return;
+  const det = $("esito-det"); det.hidden = !det.hidden;
+  $("esito-top").setAttribute("aria-expanded", String(!det.hidden));
+  $("e-freccia").textContent = det.hidden ? "dettagli ▲" : "chiudi ▼";
+});
+
+// ---------- salvataggio automatico
+let tSalva = 0;
+function salvaDopo() { clearTimeout(tSalva); tSalva = setTimeout(salvaOra, 400); }
+async function salvaOra() {
+  clearTimeout(tSalva);
+  if (!cor) return;
+  cor.aggiornata = new Date().toISOString();
+  try { await metti("visite", cor); $("salvato").textContent = "salvato ✓"; }
+  catch (e) { $("salvato").textContent = "non salvato!"; }
+}
+document.addEventListener("visibilitychange", () => { if (document.hidden) salvaOra(); });
+
+$("conclusa").addEventListener("click", async () => { cor.stato = "conclusa"; await salvaOra(); avviso("Visita salvata sul telefono."); home(); });
+$("elimina").addEventListener("click", async e => {
+  const b = e.currentTarget;
+  if (!b.classList.contains("conferma")) { b.classList.add("conferma"); b.textContent = "Tocca di nuovo per eliminare"; return; }
+  const id = cor.id;
+  for (const f of await fileDi(id)) await togli("file", f.id);
+  await togli("visite", id); cor = null; avviso("Visita eliminata."); home();
+});
+
+// ---------- vocali
+let rec = null, t0 = 0, timer = 0;
+function aggiornaRec() {
+  const s = rec ? Math.floor((Date.now() - t0) / 1000) : 0;
+  $("rec").classList.toggle("attivo", !!rec);
+  $("rec-t").textContent = rec ? `Ferma · ${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}` : "Registra un vocale";
+}
+$("rec").addEventListener("click", async () => {
+  if (rec) { rec.stop(); return; }
+  if (!navigator.mediaDevices || !window.MediaRecorder) { avviso("Questo telefono non permette di registrare dal browser."); return; }
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({audio: true}); }
+  catch (e) { avviso("Microfono bloccato: consenti il microfono per questa pagina nelle impostazioni."); return; }
+  const tipo = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm"].find(t => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) || "";
+  const r = new MediaRecorder(stream, tipo ? {mimeType: tipo} : undefined), pezzi = [], visita = cor.id;
+  let blocco = null;
+  try { blocco = await navigator.wakeLock?.request("screen"); } catch (e) {}
+  r.ondataavailable = e => { if (e.data && e.data.size) pezzi.push(e.data); };
+  r.onstop = async () => {
+    stream.getTracks().forEach(t => t.stop());
+    try { blocco && blocco.release(); } catch (e) {}
+    const durata = Math.round((Date.now() - t0) / 1000);
+    rec = null; clearInterval(timer); aggiornaRec();
+    const blob = new Blob(pezzi, {type: r.mimeType || tipo || "audio/mp4"});
+    await metti("file", {id: nuovoId(), visita, tipo: "audio", blob, creato: new Date().toISOString(), durata, inviato: false});
+    if (cor && cor.id === visita) mostraFile();
+  };
+  rec = r; t0 = Date.now(); r.start(1000);
+  timer = setInterval(aggiornaRec, 500); aggiornaRec();
+});
+
+// ---------- foto (ridotte a 1600 px: più leggere da salvare e da inviare)
+async function riduci(file) {
+  try {
+    const img = await createImageBitmap(file);
+    const s = Math.min(1, 1600 / Math.max(img.width, img.height));
+    const c = document.createElement("canvas");
+    c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
+    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+    return await new Promise(ok => c.toBlob(b => ok(b || file), "image/jpeg", 0.82));
+  } catch (e) { return file; }
+}
+$("f_foto").addEventListener("change", async e => {
+  const visita = cor.id;
+  for (const f of e.target.files) {
+    const blob = await riduci(f);
+    await metti("file", {id: nuovoId(), visita, tipo: "foto", blob, creato: new Date().toISOString(), inviato: false});
+  }
+  e.target.value = "";
+  if (cor && cor.id === visita) mostraFile();
+});
+
+// ---------- elenco di vocali e foto della visita
+let url = [];
+async function mostraFile() {
+  url.forEach(u => URL.revokeObjectURL(u)); url = [];
+  const f = (await fileDi(cor.id)).sort((a, b) => a.creato.localeCompare(b.creato));
+  const link = b => { const u = URL.createObjectURL(b); url.push(u); return u; };
+  $("audio").innerHTML = f.filter(x => x.tipo === "audio").map((x, i) =>
+    `<div class="audio"><span class="nota">${i + 1}</span><audio controls preload="none" src="${link(x.blob)}"></audio>
+     <span class="nota">${Math.floor(x.durata / 60)}:${String(x.durata % 60).padStart(2, "0")}</span>
+     <button class="x" data-del="${x.id}" aria-label="Elimina vocale">✕</button></div>`).join("");
+  $("galleria").innerHTML = f.filter(x => x.tipo === "foto").map(x =>
+    `<figure><img src="${link(x.blob)}" alt="Foto della visita"><button class="x" data-del="${x.id}" aria-label="Elimina foto">✕</button></figure>`).join("");
+}
+document.addEventListener("click", async e => {
+  const b = e.target.closest("[data-del]"); if (!b) return;
+  if (!b.classList.contains("conferma")) { b.classList.add("conferma"); b.textContent = "Elimina?"; setTimeout(() => { b.classList.remove("conferma"); b.textContent = "✕"; }, 3000); return; }
+  await togli("file", b.dataset.del); mostraFile();
+});
+
+// ---------- avvio: l'app funziona anche senza rete (service worker)
+if ("serviceWorker" in navigator && location.protocol !== "file:") navigator.serviceWorker.register("sw.js").catch(() => {});
+home();
+</script>
+</body>
+</html>
