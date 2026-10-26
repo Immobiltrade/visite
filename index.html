@@ -156,16 +156,13 @@ main { padding: 14px max(16px, env(safe-area-inset-right, 0px)) 24px max(16px, e
   <button class="grande" id="nuova">+ Nuova visita</button>
   <div id="elenco" style="display:grid;gap:8px"></div>
   <p class="nota" id="invio">Le visite restano salvate sul telefono, anche senza campo.</p>
-  <form class="blocco" id="collega" hidden autocomplete="on">
+  <div class="blocco" id="chi-blocco" hidden>
     <div class="campo">
-      <span class="etichetta">Collegati al sistema Immobiltrade</span>
-      <span class="nota">Una volta sola: poi le visite arrivano da sole nella piattaforma, alla voce Visite.</span>
-      <input class="testo" id="c_email" type="email" autocomplete="username" placeholder="email" required>
-      <input class="testo" id="c_pw" type="password" autocomplete="current-password" placeholder="password" required>
-      <button class="grande" type="submit">Collegati</button>
-      <span class="nota" id="c_esito" role="status"></span>
+      <span class="etichetta">Chi fa le visite con questo telefono?</span>
+      <span class="nota">Si sceglie una volta sola; si cambia toccando il nome qui sotto.</span>
+      <div class="si-no chi" id="chi"><button data-chi="Eric">Eric</button><button data-chi="Daniele">Daniele</button><button data-chi="Silvia">Silvia</button></div>
     </div>
-  </form>
+  </div>
 </main>
 
 <main id="visita" hidden>
@@ -460,7 +457,7 @@ $("elenco").addEventListener("click", async e => {
   const v = await una("visite", b.dataset.id); if (v) apriVisita(v);
 });
 $("nuova").addEventListener("click", async () => {
-  const v = {id: nuovoId(), creata: new Date().toISOString(), aggiornata: new Date().toISOString(), nome: "", pos: null,
+  const v = {id: nuovoId(), creata: new Date().toISOString(), aggiornata: new Date().toISOString(), autore: leggiChi() || null, nome: "", pos: null,
              stato: "bozza", dati: {dettaglio: nuovoDettaglio()}};
   await metti("visite", v);
   apriVisita(v);
@@ -743,35 +740,16 @@ document.addEventListener("click", async e => {
 });
 
 // ---------- invio al sistema: database Supabase "immobiltrade" (tabella visite + cartella privata "visite").
-// Si entra una volta sola con l'utente creato da Eric in Supabase; poi l'invio parte da solo quando c'è rete.
+// Nessun accesso (Eric 26/10): con la chiave pubblica il telefono può solo AGGIUNGERE visite (funzione salva_visita)
+// e caricare foto/vocali; non può leggere niente. Si sceglie solo chi fa le visite (Eric, Daniele o Silvia).
 const SUPA_URL = "https://miyheufkwfdrlzgqglyk.supabase.co";
-const SUPA_KEY = "sb_publishable_VcQ-zNBNcgl5rQf_MIiP3Q_hOiowtfD";  // chiave PUBBLICA (publishable): senza login non legge né scrive nulla
-const leggiSessione = () => { try { return JSON.parse(localStorage.getItem("visite-sessione") || "null"); } catch (e) { return null; } };
-const scriviSessione = s => { try { s ? localStorage.setItem("visite-sessione", JSON.stringify(s)) : localStorage.removeItem("visite-sessione"); } catch (e) {} };
-const collegato = () => !!(SUPA_KEY && leggiSessione());
-async function entra(corpo, tipo) {
-  const r = await fetch(`${SUPA_URL}/auth/v1/token?grant_type=${tipo}`, {method: "POST",
-    headers: {apikey: SUPA_KEY, "Content-Type": "application/json"}, body: JSON.stringify(corpo)});
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) { const e = new Error(j.error_description || j.msg || "accesso non riuscito"); e.rifiutato = r.status < 500; throw e; }
-  const s = {token: j.access_token, refresh: j.refresh_token, scade: Date.now() + (j.expires_in - 60) * 1000, email: j.user && j.user.email};
-  scriviSessione(s);
-  return s;
-}
-async function token() {
-  let s = leggiSessione();
-  if (!s) return null;
-  if (Date.now() > s.scade) {
-    try { s = await entra({refresh_token: s.refresh}, "refresh_token"); }
-    catch (e) { if (e.rifiutato) scriviSessione(null); throw e; }
-  }
-  return s.token;
-}
+const SUPA_KEY = "sb_publishable_VcQ-zNBNcgl5rQf_MIiP3Q_hOiowtfD";  // chiave PUBBLICA (publishable)
+const leggiChi = () => { try { return localStorage.getItem("visite-chi") || ""; } catch (e) { return ""; } };
+const scriviChi = c => { try { localStorage.setItem("visite-chi", c); } catch (e) {} };
+const collegato = () => !!SUPA_KEY;
 async function chiama(percorso, opz = {}) {
-  const t = await token();
-  if (!t) throw new Error("non collegato");
-  const r = await fetch(SUPA_URL + percorso, Object.assign({}, opz, {headers: Object.assign({apikey: SUPA_KEY, Authorization: "Bearer " + t}, opz.headers || {})}));
-  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  const r = await fetch(SUPA_URL + percorso, Object.assign({}, opz, {headers: Object.assign({apikey: SUPA_KEY}, opz.headers || {})}));
+  if (!r.ok) { const e = new Error(`${r.status} ${await r.text()}`); e.stato = r.status; e.testo = e.message; throw e; }
   return r;
 }
 let inInvio = false, erroreInvio = "", tInvia = 0;
@@ -786,8 +764,13 @@ async function invia() {
       for (const f of (await fileDi(v.id)).filter(x => !x.inviato)) {
         const est = f.tipo === "foto" ? "jpg" : f.mime.includes("webm") ? "webm" : "m4a";
         const percorso = `${v.id}/${f.tipo}-${f.id}.${est}`;
-        await chiama(`/storage/v1/object/visite/${percorso}`, {method: "POST", body: blobDi(f),
-          headers: {"Content-Type": f.mime, "x-upsert": "true"}});
+        try {
+          await chiama(`/storage/v1/object/visite/${percorso}`, {method: "POST", body: blobDi(f),
+            headers: {"Content-Type": f.mime.split(";")[0]}});
+        } catch (e) {
+          // già caricato in un invio precedente interrotto: va bene così
+          if (!/already exists|Duplicate|409/i.test(e.testo || "")) throw e;
+        }
         f.inviato = true; f.percorso = percorso;
         await metti("file", f);
       }
@@ -795,10 +778,10 @@ async function invia() {
         .map(x => ({id: x.id, tipo: x.tipo, percorso: x.percorso, creato: x.creato, durata: x.durata || null}));
       const r = conto(v.dati);
       const riga = {id: v.id, nome: v.nome || null, creata: v.creata, aggiornata: v.aggiornata, stato: v.stato,
-        autore: (leggiSessione() || {}).email || null, pos: v.pos, dati: v.dati, bp: perBp(v.dati), file,
+        autore: v.autore || leggiChi() || null, pos: v.pos, dati: v.dati, bp: perBp(v.dati), file,
         conto: r ? {roi: r.roi, utile: r.utile, ricavi: r.ricavi, costi: r.costi, prezzo_max: r.prezzo_max} : null};
-      await chiama("/rest/v1/visite?on_conflict=id", {method: "POST", body: JSON.stringify(riga),
-        headers: {"Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=minimal"}});
+      await chiama("/rest/v1/rpc/salva_visita", {method: "POST", body: JSON.stringify({riga}),
+        headers: {"Content-Type": "application/json"}});
       // inviata: se nel frattempo è cambiata qualcosa, resta da inviare e partirà al prossimo giro
       const ora = await una("visite", v.id);
       if (ora && ora.aggiornata === versione && !(await fileDi(v.id)).some(x => !x.inviato)) {
@@ -811,34 +794,29 @@ async function invia() {
   inInvio = false;
   statoInvio();
 }
+function mostraChi() {
+  const c = leggiChi();
+  $("chi").querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.chi === c)));
+  $("chi-blocco").hidden = !!c;
+}
 async function statoInvio() {
   const el = $("invio");
   if (!el || $("home").hidden) return;
-  if (!SUPA_KEY) { el.innerHTML = "Le visite restano salvate sul telefono, anche senza campo. L'invio al sistema non è ancora attivo."; return; }
-  if (!leggiSessione()) { el.innerHTML = `Non sei collegato al sistema: le visite restano solo sul telefono. <button class="link" id="apri-collega">Collegati</button>`; return; }
+  mostraChi();
   let n = 0;
   try { n = (await tutte("visite")).filter(x => x.da_inviare).length; } catch (e) {}
-  const chi = esc((leggiSessione() || {}).email || "");
+  const chi = leggiChi();
   el.innerHTML = (n === 0 ? `<b class="ok">Tutte le visite sono nel sistema ✓</b>`
     : !navigator.onLine ? `<b>${n} da inviare</b>: partiranno appena c'è rete.`
     : erroreInvio ? `<b class="ko">Invio non riuscito</b> (${n} da inviare): riprovo più tardi. <button class="link" id="riprova-invio">Riprova ora</button>`
-    : `<b>Invio in corso…</b> (${n})`) + ` <span class="nota">· ${chi} · <button class="link" id="esci">Esci</button></span>`;
+    : `<b>Invio in corso…</b> (${n})`) + (chi ? ` <span class="nota">· visite di <button class="link" id="cambia-chi">${esc(chi)}</button></span>` : "");
 }
-document.addEventListener("click", async e => {
+document.addEventListener("click", e => {
   const id = e.target.id;
-  if (id === "apri-collega") { $("collega").hidden = false; $("c_email").focus(); }
   if (id === "riprova-invio") invia();
-  if (id === "esci") { scriviSessione(null); statoInvio(); }
-});
-$("collega").addEventListener("submit", async e => {
-  e.preventDefault();
-  $("c_esito").textContent = "Collego…";
-  try {
-    await entra({email: $("c_email").value.trim(), password: $("c_pw").value}, "password");
-    $("c_pw").value = ""; $("collega").hidden = true; $("c_esito").textContent = "";
-    avviso("Collegato: le visite partono da sole quando c'è rete.");
-    invia();
-  } catch (err) { $("c_esito").textContent = navigator.onLine ? "Email o password sbagliate." : "Serve la rete per collegarsi."; }
+  if (id === "cambia-chi") { $("chi-blocco").hidden = false; }
+  const b = e.target.closest("[data-chi]");
+  if (b) { scriviChi(b.dataset.chi); mostraChi(); statoInvio(); }
 });
 window.addEventListener("online", () => invia());
 
