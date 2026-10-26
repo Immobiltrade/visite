@@ -259,6 +259,7 @@ const STANDARD = {
   allacci: 5000, prov_acq_pct: 4, prov_ven_pct: 2, mesi: 24,
   costo_caparre: 0, costo_mutuo: 5, costo_crowd: 12, costo_privati: 10, margine_pct: 30,
 };
+const ONERI_PCT = 10;           // oneri finanziari = 10% del totale degli altri costi (Eric 26/10); il BP vero si corregge dopo
 const MUTUO_PCT = 50;           // la banca di solito dà il 50% di (acquisto + lavori)
 const TETTO_ROI = 5;            // Eric 26/10: tetto da rifare = ROI più basso di 5 punti (niente costi in più)
 const ROI_VERDE = 30, ROI_GIALLO = 20;  // semaforo: da confermare con Eric
@@ -357,14 +358,17 @@ function mqTot(d) {
 }
 function perBp(d) {
   const det = righeDettaglio(d);
-  return Object.assign({}, STANDARD, {
+  const v = Object.assign({}, STANDARD, {
     acquisto: daK(d.prezzo), mq: mqTot(d), vendita_mq: d.vendita_mq,
     superfici: det.map(x => Object.assign({}, x, {vendita_mq: d.vendita_mq, lavori_mq: STANDARD.lavori_mq})),
     cambio_uso: d.cambio_uso === "si" ? (d.oneri_cambio_uso || 0) : 0,
     caparre: null, caparre_pct: null, mutuo: null, mutuo_pct: MUTUO_PCT, crowd: null, privati: null,
     lavori_tot: null,
-    oneri_manuali: null, investitori: [], crowd_blocchi: [],
+    oneri_manuali: 0, investitori: [], crowd_blocchi: [],
   });
+  // oneri scritti "a mano" come nel BP: così la piattaforma, rifacendo il conto, trova lo stesso numero
+  v.oneri_manuali = Math.round(calcola(v).costi * ONERI_PCT / 100);
+  return v;
 }
 function conto(d) {
   if (!d || !d.prezzo || !mqTot(d) || !d.vendita_mq) return null;
@@ -373,7 +377,10 @@ function conto(d) {
   const tetto = d.tetto === "si" ? TETTO_ROI : 0;
   r.roi_numeri = r.roi;
   if (r.roi !== null) r.roi -= tetto;
-  r.prezzo_max = prezzoDa(r, v, r.ricavi / (1 + (ROI_OBIETTIVO + tetto) / 100));
+  // prezzo massimo: costi totali = ricavi / (1 + ROI), di cui gli oneri sono il 10% degli altri costi
+  const altri = r.ricavi / (1 + (ROI_OBIETTIVO + tetto) / 100) / (1 + ONERI_PCT / 100);
+  const resto = r.costi - r.oneri_fin - r.acquisto - r.notaio - r.prov_acquisto;
+  r.prezzo_max = (altri - resto - r.due_diligence * 0.09 - 3000) / (1.09 + v.prov_acq_pct / 100);
   r.v = v;
   return r;
 }
@@ -601,7 +608,7 @@ function aggiorna() {
     ["Notaio e imposte", r.notaio, "(acquisto + due diligence) × 9% + 3.000 €"],
     ["Ristrutturazione", r.ristrutturazione, `${fmt(STANDARD.lavori_mq)} €/mq + ricarico Edilenergetica ${STANDARD.ricarico_edil}%`],
     ["Architetto e imprevisti", r.architetto + r.imprevisti, `${STANDARD.architetto_pct}% + 5% dei lavori delle ditte`],
-    ["Oneri finanziari", r.oneri_fin, `mutuo ${MUTUO_PCT}% al ${STANDARD.costo_mutuo}% per ${STANDARD.mesi} mesi`],
+    ["Oneri finanziari", r.oneri_fin, `${ONERI_PCT}% degli altri costi`],
     ["Spese standard", spese, "due diligence, rendering, assicurazioni, allacci"],
     ...(r.cambio_uso ? [["Oneri cambio d'uso", r.cambio_uso]] : []),
     ["Provvigioni agenzie", r.prov_acquisto + r.prov_vendita, `${STANDARD.prov_acq_pct}% acquisto + ${STANDARD.prov_ven_pct}% vendita`],
