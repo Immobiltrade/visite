@@ -59,6 +59,10 @@ main { padding: 14px max(16px, env(safe-area-inset-right, 0px)) 24px max(16px, e
 .riga-t b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
 .riga-t small { color: var(--muted) }
 .riga-roi { font-weight: 700; font-variant-numeric: tabular-nums }
+.riga-c { display: flex; align-items: stretch; gap: 6px }
+.riga-c .riga { flex: 1; min-width: 0 }
+.riga-c .x { flex: none; min-width: 48px; border-radius: 12px; background: var(--card) }
+.riga-c .x.conferma { background: var(--bad); color: #fff; border-color: var(--bad); font-size: 13px; max-width: 120px }
 
 .sem { width: 14px; height: 14px; border-radius: 50%; flex: none; background: var(--grey) }
 .sem.verde { background: var(--ok) } .sem.giallo { background: var(--warn) } .sem.rosso { background: var(--bad) }
@@ -111,13 +115,18 @@ main { padding: 14px max(16px, env(safe-area-inset-right, 0px)) 24px max(16px, e
 
 .foto-btn { display: flex; align-items: center; justify-content: center; gap: 8px; border: 1px dashed var(--muted); border-radius: 14px; padding: 14px; font-weight: 700 }
 .galleria { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px }
+.galleria-riga { display: flex; gap: 6px; align-items: flex-start; min-width: 0 }
+.galleria-riga .galleria { flex: 1; min-width: 0 }
+.galleria-riga:has(.galleria:empty) { display: none }
+.piu-foto { flex: none; width: 72px; height: 72px; border: 1px dashed var(--muted); border-radius: 8px; display: flex;
+  align-items: center; justify-content: center; font-size: 34px; font-weight: 400; color: var(--muted); background: var(--chip) }
 .galleria:empty, #audio:empty, .conta:empty { display: none }
 .galleria figure { margin: 0; position: relative; flex: none; width: 72px; height: 72px }
 .galleria img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; display: block }
 .galleria .x { position: absolute; top: 2px; right: 2px; background: rgba(0,0,0,.55); color: #fff; border: 0; padding: 2px 6px; font-size: 12px }
 .conta { font-size: 14px; font-weight: 700; color: var(--ok) }
 #video:empty { display: none }
-.video video, .anteprima { width: 100%; max-height: 260px; border-radius: 10px; background: #000; display: block }
+.video video { width: 100%; max-height: 260px; border-radius: 10px; background: #000; display: block }
 #ag-modo button { min-width: 0 }
 #ag-modo button[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); border-color: var(--accent) }
 
@@ -255,14 +264,18 @@ main { padding: 14px max(16px, env(safe-area-inset-right, 0px)) 24px max(16px, e
       <label class="foto-btn" for="f_foto">Scatta o aggiungi foto</label>
       <input type="file" id="f_foto" accept="image/*" multiple hidden>
       <span class="conta" id="conta-foto"></span>
-      <div class="galleria" id="galleria"></div>
+      <div class="galleria-riga" id="galleria-riga">
+        <div class="galleria" id="galleria"></div>
+        <label class="piu-foto" for="f_foto_cam" aria-label="Scatta un'altra foto">+</label>
+        <input type="file" id="f_foto_cam" accept="image/*" capture="environment" hidden>
+      </div>
     </div>
     <div class="campo">
-      <button class="rec" id="rec-video"><span class="pallino"></span><span id="recv-t">Registra un video (max 3 min)</span></button>
-      <video id="anteprima" class="anteprima" playsinline muted hidden></video>
+      <label class="rec" for="f_video_cam"><span class="pallino"></span><span>Registra un video</span></label>
+      <input type="file" id="f_video_cam" accept="video/*" capture="environment" hidden>
       <label class="foto-btn" for="f_video">Carica un video dalla galleria</label>
       <input type="file" id="f_video" accept="video/*" hidden>
-      <span class="nota">Dalla galleria: massimo 45 MB, cioè circa 30 secondi di un video normale del telefono. Per video più lunghi registrali da qui (fino a 3 minuti).</span>
+      <span class="nota">Si apre la videocamera del telefono. Massimo 45 MB per video, cioè circa 1 minuto (in 4K molto meno).</span>
       <span class="conta" id="conta-video"></span>
       <div id="video" style="display:grid;gap:6px"></div>
     </div>
@@ -490,15 +503,28 @@ async function home() {
   v.sort((a, b) => b.creata.localeCompare(a.creata));
   $("elenco").innerHTML = v.length ? v.map(x => {
     const r = conto(x.dati), mq = mqTot(x.dati);
-    return `<button class="riga" data-id="${x.id}"><span class="sem ${semaforo(r)}"></span>
+    return `<div class="riga-c"><button class="riga" data-id="${x.id}"><span class="sem ${semaforo(r)}"></span>
       <span class="riga-t"><b>${esc(x.nome || "Visita senza nome")}</b>
       <small>${dataIt(x.creata)}${mq ? " · " + fmt(mq) + " mq" : ""}${x.stato === "conclusa" ? " · conclusa" : ""}${x.inviata && !x.da_inviare ? " · nel sistema ✓" : ""}</small></span>
-      <span class="riga-roi">${r && r.roi !== null ? "ROI " + fmt(r.roi) + "%" : "–"}</span></button>`;
+      <span class="riga-roi">${r && r.roi !== null ? "ROI " + fmt(r.roi) + "%" : "–"}</span></button>
+      <button class="x" data-elv="${x.id}" aria-label="Elimina la visita dal telefono">✕</button></div>`;
   }).join("") : `<p class="vuoto">Nessuna visita ancora.<br>Tocca <b>Nuova visita</b> quando entri in un immobile: data, ora e posizione si salvano da sole.</p>`;
   statoInvio();
   invia();
 }
 $("elenco").addEventListener("click", async e => {
+  const x = e.target.closest("[data-elv]");
+  if (x) {
+    // Elimina senza aprire: primo tocco chiede conferma. Toglie la visita solo dal telefono (nel sistema resta).
+    if (!x.classList.contains("conferma")) {
+      const v = await una("visite", x.dataset.elv);
+      x.classList.add("conferma"); x.textContent = v && v.inviata && !v.da_inviare ? "Elimina?" : "Non inviata! Elimina?";
+      setTimeout(() => { x.classList.remove("conferma"); x.textContent = "✕"; }, 4000); return;
+    }
+    const id = x.dataset.elv;
+    for (const f of await fileDi(id)) await togli("file", f.id);
+    await togli("visite", id); avviso("Visita eliminata dal telefono."); home(); return;
+  }
   const b = e.target.closest(".riga"); if (!b) return;
   const v = await una("visite", b.dataset.id); if (v) apriVisita(v);
 });
@@ -716,7 +742,6 @@ function aggiornaRec() {
 }
 $("rec").addEventListener("click", async () => {
   if (rec) { rec.stop(); return; }
-  if (recV) { avviso("Prima ferma il video."); return; }
   if (!navigator.mediaDevices || !window.MediaRecorder) { avviso("Questo telefono non permette di registrare dal browser."); return; }
   let stream;
   try { stream = await navigator.mediaDevices.getUserMedia({audio: true}); }
@@ -754,16 +779,19 @@ async function riduci(file) {
     return await new Promise(ok => c.toBlob(b => ok(b || file), "image/jpeg", 0.82));
   } catch (e) { return file; }
 }
-$("f_foto").addEventListener("change", async e => {
-  const visita = cor.id, scelte = [...e.target.files];
-  e.target.value = "";
+// "+" accanto alla mini-galleria (Eric 28/10): apre subito la fotocamera
+for (const id of ["f_foto", "f_foto_cam"]) $(id).addEventListener("change", e => salvaFoto(e.target));
+async function salvaFoto(input) {
+  const visita = cor.id, scelte = [...input.files];
+  input.value = "";
+  if (!scelte.length) return;
   let ok = 0;
   for (const f of scelte) {
     try { await nuovoFile(visita, "foto", await riduci(f)); ok++; } catch (err) {}
   }
   avviso(ok === scelte.length ? (ok === 1 ? "Foto salvata." : `${ok} foto salvate.`) : `Salvate ${ok} foto su ${scelte.length}: memoria piena?`);
   if (cor && cor.id === visita) mostraFile();
-});
+}
 
 // ---------- agenzia immobiliare (Eric 28/10): a mano oppure foto del biglietto da visita, che legge il Mac dell'ufficio
 const AG = [["ag_nome", "nome"], ["ag_agente", "agente"], ["ag_telefono", "telefono"], ["ag_email", "email"]];
@@ -792,55 +820,10 @@ $("f_biglietto").addEventListener("change", async e => {
   if (cor && cor.id === visita) mostraFile();
 });
 
-// ---------- video (Eric 28/10): registrati qui fino a 3 minuti a qualità ridotta, o dalla galleria fino a 45 MB
-// (il sistema gratuito accetta file fino a 50 MB)
-const MAX_VIDEO_S = 180, MAX_VIDEO_MB = 45;
+// ---------- video (Eric 28/10): con la videocamera del telefono o dalla galleria, fino a 45 MB
+// (il sistema gratuito accetta file fino a 50 MB). La registrazione dentro l'app è stata tolta (Eric 28/10).
+const MAX_VIDEO_MB = 45;
 const mb = n => fmt(n / 1e6, 1) + " MB";
-let recV = null, t0V = 0, timerV = 0, pienoV = false;
-function aggiornaRecV() {
-  const s = recV ? Math.round((Date.now() - t0V) / 1000) : 0;
-  $("rec-video").classList.toggle("attivo", !!recV);
-  $("recv-t").textContent = recV ? `Ferma · ${durataTxt(s)} di 3:00` : "Registra un video (max 3 min)";
-  if (recV && s >= MAX_VIDEO_S && recV.state === "recording") recV.stop();
-}
-$("rec-video").addEventListener("click", async () => {
-  if (recV) { recV.stop(); return; }
-  if (rec) { avviso("Prima ferma il vocale."); return; }
-  if (!navigator.mediaDevices || !window.MediaRecorder) { avviso("Questo telefono non registra video dal browser: caricalo dalla galleria."); return; }
-  let stream;
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({audio: true,
-      video: {facingMode: "environment", width: {ideal: 1280}, height: {ideal: 720}}});
-  } catch (e) { avviso("Fotocamera bloccata: consenti fotocamera e microfono per questa pagina nelle impostazioni."); return; }
-  const tipo = ["video/mp4", "video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"]
-    .find(t => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) || "";
-  const r = new MediaRecorder(stream, Object.assign({videoBitsPerSecond: 1200000, audioBitsPerSecond: 64000}, tipo ? {mimeType: tipo} : {}));
-  const pezzi = [], visita = cor.id, ant = $("anteprima");
-  let peso = 0, blocco = null;
-  pienoV = false;
-  try { blocco = await navigator.wakeLock?.request("screen"); } catch (e) {}
-  ant.srcObject = stream; ant.hidden = false; ant.play().catch(() => {});
-  r.ondataavailable = e => {
-    if (!e.data || !e.data.size) return;
-    pezzi.push(e.data); peso += e.data.size;
-    if (peso > (MAX_VIDEO_MB - 1) * 1e6 && r.state === "recording") { pienoV = true; r.stop(); }
-  };
-  r.onstop = async () => {
-    stream.getTracks().forEach(t => t.stop());
-    ant.srcObject = null; ant.hidden = true;
-    try { blocco && blocco.release(); } catch (e) {}
-    const durata = Math.round((Date.now() - t0V) / 1000);
-    recV = null; clearInterval(timerV); aggiornaRecV();
-    const blob = new Blob(pezzi, {type: r.mimeType || tipo || "video/mp4"});
-    try {
-      await nuovoFile(visita, "video", blob, {durata});
-      avviso(`Video salvato (${durataTxt(durata)}, ${mb(blob.size)})` + (pienoV ? `: fermato al limite di ${MAX_VIDEO_MB} MB.` : "."));
-    } catch (e) { avviso("Il video NON è stato salvato: memoria del telefono piena?"); }
-    if (cor && cor.id === visita) mostraFile();
-  };
-  recV = r; t0V = Date.now(); r.start(1000);
-  timerV = setInterval(aggiornaRecV, 500); aggiornaRecV();
-});
 function durataVideo(f) {
   return new Promise(ok => {
     const v = document.createElement("video"), u = URL.createObjectURL(f);
@@ -852,12 +835,12 @@ function durataVideo(f) {
     v.src = u;
   });
 }
-$("f_video").addEventListener("change", async e => {
+for (const id of ["f_video", "f_video_cam"]) $(id).addEventListener("change", async e => {
   const visita = cor.id, f = e.target.files[0];
   e.target.value = "";
   if (!f) return;
   if (f.size > MAX_VIDEO_MB * 1e6) {
-    avviso(`Video troppo grande (${mb(f.size)}): massimo ${MAX_VIDEO_MB} MB. Accorcialo dalla galleria o registralo da qui.`);
+    avviso(`Video troppo grande (${mb(f.size)}): massimo ${MAX_VIDEO_MB} MB, cioè circa 1 minuto. Fanne uno più corto.`);
     return;
   }
   try {
