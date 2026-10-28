@@ -286,6 +286,7 @@ main { padding: 14px max(16px, env(safe-area-inset-right, 0px)) 24px max(16px, e
 
   <div class="fine">
     <button class="grande" id="conclusa">Visita conclusa</button>
+    <button class="secondario" id="pdf">Condividi la visita in PDF</button>
     <button class="secondario" id="elimina">Elimina dal telefono</button>
   </div>
 </main>
@@ -677,8 +678,15 @@ function aggiorna() {
     oneri finanziari ${ONERI_PCT}%…). Il tetto da rifare non cambia il ROI. Semaforo: verde da ${ROI_VERDE}%, giallo da ${ROI_GIALLO}%.</small>`;
   $("e-roi").textContent = "ROI " + fmt(r.roi) + "%";
   $("e-utile").innerHTML = `<span>utile lordo</span><b>${euro(r.utile)}</b>`;
+  $("esito-det").innerHTML = vociConto(r).map(([t, n, s]) => `<div class="voce"><span>${t}${s ? `<small>${s}</small>` : ""}</span><span>${euro(n)}</span></div>`).join("") +
+    `<div class="voce tot"><span>Totale costi</span><span>${euro(r.costi)}</span></div>
+     <div class="voce tot"><span>Utile lordo · ROI ${fmt(r.roi)}%</span><span>${euro(r.utile)}</span></div>
+     <div class="voce max"><span>Prezzo massimo per un ROI del ${ROI_OBIETTIVO}%</span><span>${r.prezzo_max > 0 ? euro(Math.floor(r.prezzo_max / 1000) * 1000) : "non c'è"}</span></div>
+     ${cor.dati.cambio_uso === "si" && !cor.dati.oneri_cambio_uso ? `<p class="nota">Cambio d'uso: oneri non ancora inseriti, il conto non li considera.</p>` : ""}`;
+}
+function vociConto(r) {  // [voce, euro, spiegazione]: le stesse nel riquadro del conto e nel PDF
   const v = r.v, spese = r.due_diligence + r.rendering + r.assicurazioni + r.allacci;
-  const righe = [
+  return [
     ["Ricavi", r.ricavi, `${fmt(r.mq_rif, r.mq_rif % 1 ? 1 : 0)} mq × ${fmt(v.vendita_mq)} €/mq`],
     ["Acquisto", r.acquisto],
     ["Notaio e imposte", r.notaio, "(acquisto + due diligence) × 9% + 3.000 €"],
@@ -689,11 +697,6 @@ function aggiorna() {
     ...(r.cambio_uso ? [["Oneri cambio d'uso", r.cambio_uso]] : []),
     ["Provvigioni agenzie", r.prov_acquisto + r.prov_vendita, `${STANDARD.prov_acq_pct}% acquisto + ${STANDARD.prov_ven_pct}% vendita`],
   ];
-  $("esito-det").innerHTML = righe.map(([t, n, s]) => `<div class="voce"><span>${t}${s ? `<small>${s}</small>` : ""}</span><span>${euro(n)}</span></div>`).join("") +
-    `<div class="voce tot"><span>Totale costi</span><span>${euro(r.costi)}</span></div>
-     <div class="voce tot"><span>Utile lordo · ROI ${fmt(r.roi)}%</span><span>${euro(r.utile)}</span></div>
-     <div class="voce max"><span>Prezzo massimo per un ROI del ${ROI_OBIETTIVO}%</span><span>${r.prezzo_max > 0 ? euro(Math.floor(r.prezzo_max / 1000) * 1000) : "non c'è"}</span></div>
-     ${cor.dati.cambio_uso === "si" && !cor.dati.oneri_cambio_uso ? `<p class="nota">Cambio d'uso: oneri non ancora inseriti, il conto non li considera.</p>` : ""}`;
 }
 $("e-aiuto").addEventListener("click", () => {
   const apri = $("e-spiega").hidden;
@@ -851,6 +854,112 @@ $("f_video").addEventListener("change", async e => {
     avviso(`Video salvato (${mb(f.size)}).`);
   } catch (err) { avviso("Il video NON è stato salvato: memoria del telefono piena?"); }
   if (cor && cor.id === visita) mostraFile();
+});
+
+// ---------- PDF della visita da condividere (Eric 28/10): si crea sul telefono, anche senza rete (jsPDF, copia locale)
+function caricaJsPdf() {
+  if (window.jspdf) return Promise.resolve();
+  return new Promise((ok, ko) => {
+    const s = document.createElement("script"); s.src = "jspdf.umd.min.js"; s.onload = ok; s.onerror = ko; document.head.append(s);
+  });
+}
+async function fotoPdf(f) {  // JPEG ridotto a 900 px, per un PDF leggero
+  const img = await createImageBitmap(blobDi(f));
+  const k = Math.min(1, 900 / Math.max(img.width, img.height)), c = document.createElement("canvas");
+  c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+  c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+  return {src: c.toDataURL("image/jpeg", 0.75), w: c.width, h: c.height};
+}
+const testoPdf = s => String(s ?? "").replace(/[–—]/g, "-").replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/…/g, "...")
+  .replace(/[^\x00-\xFF€]/g, "");  // i font base del PDF non hanno emoji e simboli strani
+async function creaPdf(v) {
+  await caricaJsPdf();
+  const {jsPDF} = window.jspdf, doc = new jsPDF({unit: "mm", format: "a4"}), d = v.dati || {}, r = conto(d);
+  const M = 16, L = 210 - 2 * M, BLU = [15, 27, 45], GRIGIO = [91, 102, 120], ARANCIO = [238, 133, 36];
+  let y = 18;
+  const spazio = h => { if (y + h > 280) { doc.addPage(); y = 18; } };
+  const titolo = t => { spazio(14); y += 4; doc.setFont("helvetica", "bold").setFontSize(12).setTextColor(...BLU).text(testoPdf(t), M, y);
+    y += 2; doc.setDrawColor(...ARANCIO).setLineWidth(0.5).line(M, y, M + L, y); y += 6; };
+  const riga = (k, val, forte) => { spazio(7);
+    doc.setFont("helvetica", forte ? "bold" : "normal").setFontSize(9.5).setTextColor(...BLU).text(testoPdf(k), M + 1, y);
+    doc.setFont("helvetica", "bold").text(testoPdf(val), M + L - 1, y, {align: "right"});
+    y += 2; doc.setDrawColor(221, 227, 235).setLineWidth(0.2).line(M, y, M + L, y); y += 4.5; };
+  doc.setFont("helvetica", "bold").setFontSize(18).setTextColor(...BLU);
+  const nome = doc.splitTextToSize(testoPdf(v.nome || "Visita senza nome"), L); doc.text(nome, M, y); y += nome.length * 7;
+  doc.setFont("helvetica", "normal").setFontSize(9.5).setTextColor(...GRIGIO)
+    .text(testoPdf(`Visita del ${new Date(v.creata).toLocaleString("it-IT", {day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit"})}`
+      + (v.autore ? ` · ${v.autore}` : "")), M, y);
+  y += 4;
+  const foto = (await fileDi(v.id)).filter(f => f.tipo === "foto");
+  if (foto.length) {
+    try { const p = await fotoPdf(foto[0]); const h = Math.min(95, L * p.h / p.w), w = h * p.w / p.h;
+      doc.addImage(p.src, "JPEG", M, y, w, h); y += h + 2; } catch (e) {}
+  }
+  titolo("I numeri");
+  if (r) {
+    riga("Prezzo di acquisto", euro(r.acquisto));
+    riga("Mq", fmt(r.mq_rif, r.mq_rif % 1 ? 1 : 0) + " mq");
+    riga("Rivendita al mq", fmt(d.vendita_mq) + " €/mq");
+    for (const [t, n] of vociConto(r).slice(2)) riga(t, euro(n));  // senza ricavi e acquisto, già sopra
+    riga("Totale costi", euro(r.costi), true);
+    riga("Ricavi", euro(r.ricavi), true);
+    riga("Utile lordo", euro(r.utile), true);
+    riga("ROI", fmt(r.roi, 1) + "%", true);
+    riga(`Prezzo massimo per un ROI del ${ROI_OBIETTIVO}%`, r.prezzo_max > 0 ? euro(Math.floor(r.prezzo_max / 1000) * 1000) : "non c'è");
+    spazio(6); doc.setFont("helvetica", "normal").setFontSize(8).setTextColor(...GRIGIO)
+      .text(testoPdf(`Stima veloce con i valori standard del business plan (lavori ${fmt(STANDARD.lavori_mq)} €/mq, oneri finanziari ${ONERI_PCT}%).`), M, y); y += 4;
+  } else {
+    if (d.prezzo) riga("Prezzo di acquisto", euro(daK(d.prezzo)));
+    if (mqTot(d)) riga("Mq", fmt(mqTot(d)) + " mq");
+    if (d.vendita_mq) riga("Rivendita al mq", fmt(d.vendita_mq) + " €/mq");
+  }
+  const det = righeDettaglio(d);
+  if (det.length) { titolo("Superfici"); for (const x of det) riga(x.categoria, fmt(x.mq) + " mq"); }
+  const sn = k => ({si: "Sì", no: "No", non_so: "Non so"}[d[k]] || "-");
+  titolo("L'edificio");
+  riga("Piani dell'edificio", d.piani ? String(d.piani) : "-");
+  riga("Tetto da rifare", sn("tetto"));
+  riga("Posti auto / garage realizzabili", sn("posti_auto"));
+  riga("Difformità o abusi", sn("difformita"));
+  riga("Vincoli", sn("vincoli"));
+  riga("Cambio di destinazione d'uso", sn("cambio_uso") + (d.cambio_uso === "si" && d.oneri_cambio_uso ? ` (oneri ${euro(d.oneri_cambio_uso)})` : ""));
+  const a = d.agenzia || {}, ag = [["Agenzia", a.nome], ["Agente", a.agente], ["Telefono", a.telefono], ["Email", a.email]].filter(x => x[1]);
+  if (ag.length) { titolo("Agenzia immobiliare"); for (const [k, x] of ag) riga(k, x); }
+  const altri = foto.slice(1, 13);
+  if (altri.length) {
+    titolo("Altre foto");
+    const lato = (L - 8) / 3; let col = 0;
+    for (const f of altri) {
+      try {
+        const p = await fotoPdf(f), h = lato * 0.75;
+        if (col === 0) spazio(h + 4);
+        const k = Math.min(lato / p.w, h / p.h);
+        doc.addImage(p.src, "JPEG", M + col * (lato + 4), y, p.w * k, p.h * k);
+        col = (col + 1) % 3; if (col === 0) y += h + 4;
+      } catch (e) {}
+    }
+    if (col) y += lato * 0.75 + 4;
+  }
+  const n = (await fileDi(v.id)).filter(f => f.tipo === "audio" || f.tipo === "video").length;
+  spazio(8); doc.setFont("helvetica", "normal").setFontSize(8).setTextColor(...GRIGIO)
+    .text(testoPdf((n ? `Vocali e video (${n}) si vedono nella piattaforma Immobiltrade. ` : "") + "Scheda creata con l'app Visite Immobiltrade."), M, y + 2);
+  return doc.output("blob");
+}
+$("pdf").addEventListener("click", async e => {
+  const b = e.currentTarget, v = cor; if (!v || b.disabled) return;
+  await salvaOra();
+  b.disabled = true; b.textContent = "Preparo il PDF…";
+  try {
+    const nomeFile = (v.nome || "Visita").replace(/[\\/:*?"<>|]/g, "").slice(0, 60).trim() + ".pdf";
+    const file = new File([await creaPdf(v)], nomeFile, {type: "application/pdf"});
+    if (navigator.canShare && navigator.canShare({files: [file]})) {
+      try { await navigator.share({files: [file], title: v.nome || "Visita"}); } catch (err) { if (err.name !== "AbortError") throw err; }
+    } else {
+      const a = document.createElement("a"); a.href = URL.createObjectURL(file); a.download = nomeFile; a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+    }
+  } catch (err) { avviso("Non riesco a creare il PDF: riprova."); }
+  b.disabled = false; b.textContent = "Condividi la visita in PDF";
 });
 
 // ---------- vocali e foto: salvati come dati semplici (ArrayBuffer), il modo più sicuro anche su iPhone
