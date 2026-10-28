@@ -116,6 +116,10 @@ main { padding: 14px max(16px, env(safe-area-inset-right, 0px)) 24px max(16px, e
 .galleria img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; display: block }
 .galleria .x { position: absolute; top: 2px; right: 2px; background: rgba(0,0,0,.55); color: #fff; border: 0; padding: 2px 6px; font-size: 12px }
 .conta { font-size: 14px; font-weight: 700; color: var(--ok) }
+#video:empty { display: none }
+.video video, .anteprima { width: 100%; max-height: 260px; border-radius: 10px; background: #000; display: block }
+#ag-modo button { min-width: 0 }
+#ag-modo button[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); border-color: var(--accent) }
 
 .fine { display: grid; gap: 10px; margin-top: 4px }
 .secondario { width: 100%; border: 1px solid var(--line); background: none; border-radius: 12px; padding: 14px; font-weight: 600; color: var(--muted) }
@@ -219,7 +223,27 @@ main { padding: 14px max(16px, env(safe-area-inset-right, 0px)) 24px max(16px, e
     </div>
   </div>
 
-  <div class="titolo-blocco">A voce e foto</div>
+  <div class="titolo-blocco">Agenzia immobiliare</div>
+  <div class="blocco">
+    <div class="campo">
+      <div class="si-no" id="ag-modo"><button data-ag="mano">Scrivi a mano</button><button data-ag="biglietto">Foto biglietto da visita</button></div>
+    </div>
+    <div id="ag-mano" hidden>
+      <div class="campo"><label for="ag_nome">Nome agenzia</label><input class="testo" id="ag_nome" autocomplete="off" placeholder="es. Tecnocasa Torino Crocetta"></div>
+      <div class="campo"><label for="ag_agente">Nome agente</label><input class="testo" id="ag_agente" autocomplete="off"></div>
+      <div class="campo"><label for="ag_telefono">Numero di telefono</label><input class="testo" id="ag_telefono" type="tel" inputmode="tel" autocomplete="off"></div>
+      <div class="campo"><label for="ag_email">Email</label><input class="testo" id="ag_email" type="email" inputmode="email" autocomplete="off" autocapitalize="off"></div>
+    </div>
+    <div class="campo" id="ag-biglietto" hidden>
+      <label class="foto-btn" for="f_biglietto">Scatta la foto del biglietto</label>
+      <input type="file" id="f_biglietto" accept="image/*" capture="environment" hidden>
+      <span class="nota">Nome dell'agenzia, agente, telefono ed email li legge da solo il Mac dell'ufficio (ogni 2 ore, se è acceso).</span>
+      <span class="conta" id="conta-biglietto"></span>
+      <div class="galleria" id="galleria-biglietto"></div>
+    </div>
+  </div>
+
+  <div class="titolo-blocco">A voce, foto e video</div>
   <div class="blocco">
     <div class="campo">
       <button class="rec" id="rec"><span class="pallino"></span><span id="rec-t">Registra un vocale</span></button>
@@ -232,6 +256,15 @@ main { padding: 14px max(16px, env(safe-area-inset-right, 0px)) 24px max(16px, e
       <input type="file" id="f_foto" accept="image/*" multiple hidden>
       <span class="conta" id="conta-foto"></span>
       <div class="galleria" id="galleria"></div>
+    </div>
+    <div class="campo">
+      <button class="rec" id="rec-video"><span class="pallino"></span><span id="recv-t">Registra un video (max 3 min)</span></button>
+      <video id="anteprima" class="anteprima" playsinline muted hidden></video>
+      <label class="foto-btn" for="f_video">Carica un video dalla galleria</label>
+      <input type="file" id="f_video" accept="video/*" hidden>
+      <span class="nota">Dalla galleria: massimo 45 MB, cioè circa 30 secondi di un video normale del telefono. Per video più lunghi registrali da qui (fino a 3 minuti).</span>
+      <span class="conta" id="conta-video"></span>
+      <div id="video" style="display:grid;gap:6px"></div>
     </div>
   </div>
 
@@ -491,9 +524,10 @@ function apriVisita(v) {
   $("f_vendita").value = d.vendita_mq ? fmt(d.vendita_mq) : "";
   $("f_oneri").value = d.oneri_cambio_uso ? fmt(d.oneri_cambio_uso) : "";
   $("f_piani").textContent = d.piani ?? "–";
-  document.querySelectorAll(".si-no").forEach(g => g.querySelectorAll("button").forEach(b =>
+  document.querySelectorAll(".si-no[data-k]").forEach(g => g.querySelectorAll("button").forEach(b =>
     b.setAttribute("aria-pressed", String(d[g.dataset.k] === b.dataset.v))));
   $("oneri_box").hidden = d.cambio_uso !== "si";
+  mostraAgenzia();
   const conDet = righeDettaglio(d).length > 0;
   disegnaDettaglio(); mostraDettaglio(conDet);
   $("elimina").classList.remove("conferma"); $("elimina").textContent = "Elimina dal telefono";
@@ -553,7 +587,7 @@ document.querySelectorAll("[data-passo]").forEach(b => b.addEventListener("click
   cor.dati.piani = n; $("f_piani").textContent = n; salvaDopo();
 }));
 // sì / no (toccando di nuovo la scelta la si toglie)
-document.querySelectorAll(".si-no").forEach(g => g.addEventListener("click", e => {
+document.querySelectorAll(".si-no[data-k]").forEach(g => g.addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b) return;
   const k = g.dataset.k, val = cor.dati[k] === b.dataset.v ? null : b.dataset.v;
   cor.dati[k] = val;
@@ -682,6 +716,7 @@ function aggiornaRec() {
 }
 $("rec").addEventListener("click", async () => {
   if (rec) { rec.stop(); return; }
+  if (recV) { avviso("Prima ferma il video."); return; }
   if (!navigator.mediaDevices || !window.MediaRecorder) { avviso("Questo telefono non permette di registrare dal browser."); return; }
   let stream;
   try { stream = await navigator.mediaDevices.getUserMedia({audio: true}); }
@@ -730,9 +765,111 @@ $("f_foto").addEventListener("change", async e => {
   if (cor && cor.id === visita) mostraFile();
 });
 
+// ---------- agenzia immobiliare (Eric 28/10): a mano oppure foto del biglietto da visita, che legge il Mac dell'ufficio
+const AG = [["ag_nome", "nome"], ["ag_agente", "agente"], ["ag_telefono", "telefono"], ["ag_email", "email"]];
+function mostraAgenzia() {
+  const a = cor.dati.agenzia || {};
+  for (const [id, k] of AG) $(id).value = a[k] || "";
+  $("ag-modo").querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.ag === a.modo)));
+  $("ag-mano").hidden = a.modo !== "mano";
+  $("ag-biglietto").hidden = a.modo !== "biglietto";
+}
+$("ag-modo").addEventListener("click", e => {
+  const b = e.target.closest("[data-ag]"); if (!b) return;
+  cor.dati.agenzia = Object.assign({}, cor.dati.agenzia, {modo: b.dataset.ag});
+  mostraAgenzia(); salvaDopo();
+});
+for (const [id, k] of AG) $(id).addEventListener("input", e => {
+  cor.dati.agenzia = Object.assign({}, cor.dati.agenzia, {[k]: e.target.value.trim()});
+  salvaDopo();
+});
+$("f_biglietto").addEventListener("change", async e => {
+  const visita = cor.id, f = e.target.files[0];
+  e.target.value = "";
+  if (!f) return;
+  try { await nuovoFile(visita, "biglietto", await riduci(f)); avviso("Biglietto salvato: i dati li legge il Mac dell'ufficio."); }
+  catch (err) { avviso("Il biglietto NON è stato salvato: memoria del telefono piena?"); }
+  if (cor && cor.id === visita) mostraFile();
+});
+
+// ---------- video (Eric 28/10): registrati qui fino a 3 minuti a qualità ridotta, o dalla galleria fino a 45 MB
+// (il sistema gratuito accetta file fino a 50 MB)
+const MAX_VIDEO_S = 180, MAX_VIDEO_MB = 45;
+const mb = n => fmt(n / 1e6, 1) + " MB";
+let recV = null, t0V = 0, timerV = 0, pienoV = false;
+function aggiornaRecV() {
+  const s = recV ? Math.round((Date.now() - t0V) / 1000) : 0;
+  $("rec-video").classList.toggle("attivo", !!recV);
+  $("recv-t").textContent = recV ? `Ferma · ${durataTxt(s)} di 3:00` : "Registra un video (max 3 min)";
+  if (recV && s >= MAX_VIDEO_S && recV.state === "recording") recV.stop();
+}
+$("rec-video").addEventListener("click", async () => {
+  if (recV) { recV.stop(); return; }
+  if (rec) { avviso("Prima ferma il vocale."); return; }
+  if (!navigator.mediaDevices || !window.MediaRecorder) { avviso("Questo telefono non registra video dal browser: caricalo dalla galleria."); return; }
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({audio: true,
+      video: {facingMode: "environment", width: {ideal: 1280}, height: {ideal: 720}}});
+  } catch (e) { avviso("Fotocamera bloccata: consenti fotocamera e microfono per questa pagina nelle impostazioni."); return; }
+  const tipo = ["video/mp4", "video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"]
+    .find(t => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) || "";
+  const r = new MediaRecorder(stream, Object.assign({videoBitsPerSecond: 1200000, audioBitsPerSecond: 64000}, tipo ? {mimeType: tipo} : {}));
+  const pezzi = [], visita = cor.id, ant = $("anteprima");
+  let peso = 0, blocco = null;
+  pienoV = false;
+  try { blocco = await navigator.wakeLock?.request("screen"); } catch (e) {}
+  ant.srcObject = stream; ant.hidden = false; ant.play().catch(() => {});
+  r.ondataavailable = e => {
+    if (!e.data || !e.data.size) return;
+    pezzi.push(e.data); peso += e.data.size;
+    if (peso > (MAX_VIDEO_MB - 1) * 1e6 && r.state === "recording") { pienoV = true; r.stop(); }
+  };
+  r.onstop = async () => {
+    stream.getTracks().forEach(t => t.stop());
+    ant.srcObject = null; ant.hidden = true;
+    try { blocco && blocco.release(); } catch (e) {}
+    const durata = Math.round((Date.now() - t0V) / 1000);
+    recV = null; clearInterval(timerV); aggiornaRecV();
+    const blob = new Blob(pezzi, {type: r.mimeType || tipo || "video/mp4"});
+    try {
+      await nuovoFile(visita, "video", blob, {durata});
+      avviso(`Video salvato (${durataTxt(durata)}, ${mb(blob.size)})` + (pienoV ? `: fermato al limite di ${MAX_VIDEO_MB} MB.` : "."));
+    } catch (e) { avviso("Il video NON è stato salvato: memoria del telefono piena?"); }
+    if (cor && cor.id === visita) mostraFile();
+  };
+  recV = r; t0V = Date.now(); r.start(1000);
+  timerV = setInterval(aggiornaRecV, 500); aggiornaRecV();
+});
+function durataVideo(f) {
+  return new Promise(ok => {
+    const v = document.createElement("video"), u = URL.createObjectURL(f);
+    const fine = d => { URL.revokeObjectURL(u); ok(d); };
+    v.preload = "metadata";
+    v.onloadedmetadata = () => fine(isFinite(v.duration) ? Math.round(v.duration) : null);
+    v.onerror = () => fine(null);
+    setTimeout(() => fine(null), 4000);
+    v.src = u;
+  });
+}
+$("f_video").addEventListener("change", async e => {
+  const visita = cor.id, f = e.target.files[0];
+  e.target.value = "";
+  if (!f) return;
+  if (f.size > MAX_VIDEO_MB * 1e6) {
+    avviso(`Video troppo grande (${mb(f.size)}): massimo ${MAX_VIDEO_MB} MB. Accorcialo dalla galleria o registralo da qui.`);
+    return;
+  }
+  try {
+    await nuovoFile(visita, "video", f.type ? f : new Blob([f], {type: "video/mp4"}), {durata: await durataVideo(f)});
+    avviso(`Video salvato (${mb(f.size)}).`);
+  } catch (err) { avviso("Il video NON è stato salvato: memoria del telefono piena?"); }
+  if (cor && cor.id === visita) mostraFile();
+});
+
 // ---------- vocali e foto: salvati come dati semplici (ArrayBuffer), il modo più sicuro anche su iPhone
 async function nuovoFile(visita, tipo, blob, extra = {}) {
-  const f = Object.assign({id: nuovoId(), visita, tipo, mime: blob.type || (tipo === "foto" ? "image/jpeg" : "audio/mp4"),
+  const f = Object.assign({id: nuovoId(), visita, tipo, mime: blob.type || ({foto: "image/jpeg", biglietto: "image/jpeg", video: "video/mp4"}[tipo] || "audio/mp4"),
                            dati: await blob.arrayBuffer(), creato: new Date().toISOString(), inviato: false}, extra);
   await metti("file", f);
   if (cor && cor.id === visita) salvaDopo();
@@ -758,6 +895,16 @@ async function mostraFile() {
   $("conta-foto").textContent = foto.length ? `${foto.length === 1 ? "1 foto salvata" : foto.length + " foto salvate"} ✓` : "";
   $("galleria").innerHTML = foto.map((x, i) =>
     `<figure><img src="${link(x)}" alt="Foto ${i + 1}"><button class="x" data-del="${x.id}" aria-label="Elimina foto ${i + 1}">✕</button></figure>`).join("");
+  const video = f.filter(x => x.tipo === "video"), big = f.filter(x => x.tipo === "biglietto");
+  const peso = x => x.dati ? x.dati.byteLength : (x.blob ? x.blob.size : 0);
+  $("conta-video").textContent = video.length ? `${video.length === 1 ? "1 video salvato" : video.length + " video salvati"} ✓` : "";
+  $("video").innerHTML = video.map((x, i) =>
+    `<div class="audio video"><div class="audio-t"><b>Video ${i + 1}</b><span>${x.durata ? durataTxt(x.durata) + " · " : ""}${mb(peso(x))}</span>
+     <button class="x" data-del="${x.id}" aria-label="Elimina video ${i + 1}">✕</button></div>
+     <video controls playsinline preload="metadata" src="${link(x)}"></video></div>`).join("");
+  $("conta-biglietto").textContent = big.length ? "Biglietto salvato ✓" : "";
+  $("galleria-biglietto").innerHTML = big.map((x, i) =>
+    `<figure><img src="${link(x)}" alt="Biglietto ${i + 1}"><button class="x" data-del="${x.id}" aria-label="Elimina biglietto ${i + 1}">✕</button></figure>`).join("");
 }
 document.addEventListener("click", async e => {
   const b = e.target.closest("[data-del]"); if (!b) return;
@@ -787,14 +934,19 @@ async function invia() {
   try {
     for (const v of (await tutte("visite")).filter(x => x.da_inviare)) {
       const versione = v.aggiornata;
-      for (const f of (await fileDi(v.id)).filter(x => !x.inviato)) {
-        const est = f.tipo === "foto" ? "jpg" : f.mime.includes("webm") ? "webm" : "m4a";
+      for (const f of (await fileDi(v.id)).filter(x => !x.inviato && !x.scartato)) {
+        const est = ["foto", "biglietto"].includes(f.tipo) ? "jpg" : f.mime.includes("webm") ? "webm"
+          : f.tipo === "video" ? (f.mime.includes("quicktime") ? "mov" : "mp4") : "m4a";
         const percorso = `${v.id}/${f.tipo}-${f.id}.${est}`;
         try {
           await chiama(`/storage/v1/object/visite/${percorso}`, {method: "POST", body: blobDi(f),
             headers: {"Content-Type": f.mime.split(";")[0]}});
         } catch (e) {
           // già caricato in un invio precedente interrotto: va bene così
+          if (/invalid_mime_type|too large|Payload too large|413/i.test(e.testo || "")) {
+            // file che il sistema non accetta: si tiene sul telefono, ma non blocca l'invio del resto
+            f.scartato = e.testo.slice(0, 200); await metti("file", f); continue;
+          }
           if (!/already exists|Duplicate|409/i.test(e.testo || "")) throw e;
         }
         f.inviato = true; f.percorso = percorso;
@@ -810,7 +962,7 @@ async function invia() {
         headers: {"Content-Type": "application/json"}});
       // inviata: se nel frattempo è cambiata qualcosa, resta da inviare e partirà al prossimo giro
       const ora = await una("visite", v.id);
-      if (ora && ora.aggiornata === versione && !(await fileDi(v.id)).some(x => !x.inviato)) {
+      if (ora && ora.aggiornata === versione && !(await fileDi(v.id)).some(x => !x.inviato && !x.scartato)) {
         ora.da_inviare = false; ora.inviata = new Date().toISOString();
         await metti("visite", ora);
         if (cor && cor.id === v.id && cor.aggiornata === versione) { cor.da_inviare = false; cor.inviata = ora.inviata; }
