@@ -105,7 +105,6 @@ main { padding: 14px max(16px, env(safe-area-inset-right, 0px)) 24px max(16px, e
 .tasto .ico svg { width: 28px; height: 28px; display: block; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round }
 .tasto.attivo { background: var(--bad); color: #fff; font-variant-numeric: tabular-nums }
 .tasto.attivo .ico { animation: pulsa 1s infinite }
-.campo:has(> .conta:empty + div:empty), .campo:has(> .conta:empty + .galleria-riga .galleria:empty) { display: none }
 @keyframes pulsa { 50% { opacity: .3 } }
 @media (prefers-reduced-motion: reduce) { .tasto.attivo .ico { animation: none } }
 .audio { display: grid; gap: 4px; min-width: 0 }
@@ -119,7 +118,8 @@ main { padding: 14px max(16px, env(safe-area-inset-right, 0px)) 24px max(16px, e
 .galleria { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px }
 .galleria-riga { display: flex; gap: 6px; align-items: flex-start; min-width: 0 }
 .galleria-riga .galleria { flex: 1; min-width: 0 }
-.galleria-riga:has(.galleria:empty) { display: none }
+.piu-riga { display: flex; align-items: center; justify-content: center; border: 1px dashed var(--muted); border-radius: 10px;
+  padding: 12px; font-weight: 600; color: var(--muted); background: var(--chip) }
 .piu-foto { flex: none; width: 72px; height: 72px; border: 1px dashed var(--muted); border-radius: 8px; display: flex;
   align-items: center; justify-content: center; font-size: 34px; font-weight: 400; color: var(--muted); background: var(--chip) }
 .galleria:empty, #audio:empty, .conta:empty { display: none }
@@ -266,11 +266,11 @@ main { padding: 14px max(16px, env(safe-area-inset-right, 0px)) 24px max(16px, e
       <input type="file" id="f_video" accept="video/*" hidden>
       <span class="nota">Nel vocale racconta il resto (stato, impianti, venditore…): il Mac lo trascrive. Video: massimo circa 1 minuto.</span>
     </div>
-    <div class="campo" id="m-audio">
+    <div class="campo" id="m-audio" hidden>
       <span class="conta" id="conta-audio"></span>
       <div id="audio" style="display:grid;gap:6px"></div>
     </div>
-    <div class="campo" id="m-foto">
+    <div class="campo" id="m-foto" hidden>
       <span class="conta" id="conta-foto"></span>
       <div class="galleria-riga" id="galleria-riga">
         <div class="galleria" id="galleria"></div>
@@ -278,9 +278,10 @@ main { padding: 14px max(16px, env(safe-area-inset-right, 0px)) 24px max(16px, e
         <input type="file" id="f_foto_cam" accept="image/*" capture="environment" hidden>
       </div>
     </div>
-    <div class="campo" id="m-video">
+    <div class="campo" id="m-video" hidden>
       <span class="conta" id="conta-video"></span>
       <div id="video" style="display:grid;gap:6px"></div>
+      <label class="piu-riga" for="f_video">+ Aggiungi un altro video</label>
     </div>
   </div>
 
@@ -812,6 +813,7 @@ $("ag-modo").addEventListener("click", e => {
   const b = e.target.closest("[data-ag]"); if (!b) return;
   cor.dati.agenzia = Object.assign({}, cor.dati.agenzia, {modo: b.dataset.ag});
   mostraAgenzia(); salvaDopo();
+  if (b.dataset.ag === "biglietto") $("f_biglietto").click();  // Eric 28/10: si apre subito la fotocamera
 });
 for (const [id, k] of AG) $(id).addEventListener("input", e => {
   cor.dati.agenzia = Object.assign({}, cor.dati.agenzia, {[k]: e.target.value.trim()});
@@ -997,6 +999,8 @@ async function mostraFile() {
     `<div class="audio video"><div class="audio-t"><b>Video ${i + 1}</b><span>${x.durata ? durataTxt(x.durata) + " · " : ""}${mb(peso(x))}</span>
      <button class="x" data-del="${x.id}" aria-label="Elimina video ${i + 1}">✕</button></div>
      <video controls playsinline preload="metadata" src="${link(x)}"></video></div>`).join("");
+  // si nasconde dal JS: Safari non aggiorna i selettori :has(:empty) quando cambia il contenuto
+  $("m-audio").hidden = !audio.length; $("m-foto").hidden = !foto.length; $("m-video").hidden = !video.length;
   $("conta-biglietto").textContent = big.length ? "Biglietto salvato ✓" : "";
   $("galleria-biglietto").innerHTML = big.map((x, i) =>
     `<figure><img src="${link(x)}" alt="Biglietto ${i + 1}"><button class="x" data-del="${x.id}" aria-label="Elimina biglietto ${i + 1}">✕</button></figure>`).join("");
