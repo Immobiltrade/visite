@@ -94,6 +94,9 @@ main { padding: 14px max(16px, env(safe-area-inset-right, 0px)) 24px max(16px, e
 .riga-sn .si-no { flex: none; width: 190px }
 .riga-sn .si-no.tre { width: 230px }
 .riga-sn .si-no button { min-width: 0 }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px }
+.chips button { min-width: 56px; border: 1px solid var(--line); background: var(--chip); border-radius: 999px; padding: 10px 12px; font-weight: 600 }
+.chips button[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); border-color: var(--accent) }
 
 .passo { display: flex; align-items: center; gap: 4px }
 .passo button { width: 48px; height: 48px; border-radius: 10px; border: 1px solid var(--line); background: var(--chip); font-size: 22px; font-weight: 700 }
@@ -211,10 +214,22 @@ main { padding: 14px max(16px, env(safe-area-inset-right, 0px)) 24px max(16px, e
       <label for="f_vendita">Prezzo di rivendita al mq</label>
       <div class="num"><input id="f_vendita" inputmode="decimal" autocomplete="off" placeholder="es. 4.200"><span class="unita">€/mq</span></div>
     </div>
+    <div class="campo">
+      <label for="f_lavori">Costo ristrutturazione al mq</label>
+      <div class="num"><input id="f_lavori" inputmode="decimal" autocomplete="off" placeholder="1.500"><span class="unita">€/mq</span></div>
+      <span class="nota">Se lo lasci vuoto vale 1.500 €/mq (più il ricarico Edilenergetica).</span>
+    </div>
   </div>
 
   <div class="titolo-blocco">L'edificio</div>
   <div class="blocco">
+    <div class="campo">
+      <div class="si-no" data-k="tipo"><button data-v="palazzina">Intera palazzina</button><button data-v="piani">Solo alcuni piani</button></div>
+      <div id="piani-box" hidden>
+        <span class="nota">Tocca i piani che compriamo:</span>
+        <div class="chips" id="piani-scelti"></div>
+      </div>
+    </div>
     <div class="campo riga-sn">
       <span class="etichetta">Piani dell'edificio</span>
       <div class="passo"><button data-passo="-1" aria-label="Un piano in meno">−</button><output id="f_piani">–</output><button data-passo="1" aria-label="Un piano in più">+</button></div>
@@ -416,11 +431,12 @@ function mqTot(d) {
   const det = righeDettaglio(d);
   return det.length ? det.reduce((s, x) => s + x.mq, 0) : d.mq;
 }
+const lavoriMq = d => d && d.lavori_mq > 0 ? d.lavori_mq : STANDARD.lavori_mq;  // Eric 29/10: si può cambiare, se no 1.500
 function perBp(d) {
   const det = righeDettaglio(d);
   const v = Object.assign({}, STANDARD, {
-    acquisto: daK(d.prezzo), mq: mqTot(d), vendita_mq: d.vendita_mq,
-    superfici: det.map(x => Object.assign({}, x, {vendita_mq: d.vendita_mq, lavori_mq: STANDARD.lavori_mq})),
+    acquisto: daK(d.prezzo), mq: mqTot(d), vendita_mq: d.vendita_mq, lavori_mq: lavoriMq(d),
+    superfici: det.map(x => Object.assign({}, x, {vendita_mq: d.vendita_mq, lavori_mq: lavoriMq(d)})),
     cambio_uso: d.cambio_uso === "si" ? (d.oneri_cambio_uso || 0) : 0,
     caparre: null, caparre_pct: null, mutuo: null, mutuo_pct: MUTUO_PCT, crowd: null, privati: null,
     lavori_tot: null,
@@ -553,11 +569,13 @@ function apriVisita(v) {
   $("f_nome").value = v.nome || "";
   $("f_prezzo").value = d.prezzo === undefined || d.prezzo === null ? "" : fmt(d.prezzo, d.prezzo % 1 ? 1 : 0);
   $("f_vendita").value = d.vendita_mq ? fmt(d.vendita_mq) : "";
+  $("f_lavori").value = d.lavori_mq ? fmt(d.lavori_mq) : "";
   $("f_oneri").value = d.oneri_cambio_uso ? fmt(d.oneri_cambio_uso) : "";
   $("f_piani").textContent = d.piani ?? "–";
   document.querySelectorAll(".si-no[data-k]").forEach(g => g.querySelectorAll("button").forEach(b =>
     b.setAttribute("aria-pressed", String(d[g.dataset.k] === b.dataset.v))));
   $("oneri_box").hidden = d.cambio_uso !== "si";
+  mostraPiani();
   mostraAgenzia();
   const conDet = righeDettaglio(d).length > 0;
   disegnaDettaglio(); mostraDettaglio(conDet);
@@ -608,14 +626,14 @@ $("pos").addEventListener("click", e => { if (e.target.id === "riprova") { e.pre
 
 // campi di testo e numeri
 $("f_nome").addEventListener("input", e => { cor.nome = e.target.value.trim(); $("titolo").textContent = cor.nome || "Nuova visita"; salvaDopo(); });
-for (const [id, k] of [["f_prezzo", "prezzo"], ["f_mq", "mq"], ["f_vendita", "vendita_mq"], ["f_oneri", "oneri_cambio_uso"]]) {
+for (const [id, k] of [["f_prezzo", "prezzo"], ["f_mq", "mq"], ["f_vendita", "vendita_mq"], ["f_lavori", "lavori_mq"], ["f_oneri", "oneri_cambio_uso"]]) {
   $(id).addEventListener("input", e => { cor.dati[k] = numero(e.target.value); aggiorna(); salvaDopo(); });
   $(id).addEventListener("blur", e => { const n = numero(e.target.value); if (n !== null && k !== "prezzo") e.target.value = fmt(n); });
 }
 // piani
 document.querySelectorAll("[data-passo]").forEach(b => b.addEventListener("click", () => {
   const n = Math.max(1, Math.min(40, (cor.dati.piani || 0) + Number(b.dataset.passo)));
-  cor.dati.piani = n; $("f_piani").textContent = n; salvaDopo();
+  cor.dati.piani = n; $("f_piani").textContent = n; mostraPiani(); salvaDopo();
 }));
 // sì / no (toccando di nuovo la scelta la si toglie)
 document.querySelectorAll(".si-no[data-k]").forEach(g => g.addEventListener("click", e => {
@@ -625,8 +643,26 @@ document.querySelectorAll(".si-no[data-k]").forEach(g => g.addEventListener("cli
   g.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", String(x.dataset.v === val)));
   if (k === "cambio_uso") { $("oneri_box").hidden = val !== "si"; }
   if (k === "cambio_uso") aggiorna();
+  if (k === "tipo") mostraPiani();
   salvaDopo();
 }));
+// piani singoli (Eric 29/10): se non è una palazzina intera si toccano i piani che si comprano
+const nomePiano = n => n === -1 ? "Interrato" : n === 0 ? "Terra" : n + "°";
+function mostraPiani() {
+  const d = cor.dati, scelti = d.piani_scelti || [];
+  $("piani-box").hidden = d.tipo !== "piani";
+  const alto = Math.max(d.piani ? d.piani - 1 : 4, ...scelti.filter(x => x > 0));
+  const elenco = []; for (let n = -1; n <= alto; n++) elenco.push(n);
+  $("piani-scelti").innerHTML = elenco.map(n =>
+    `<button data-piano="${n}" aria-pressed="${scelti.includes(n)}">${nomePiano(n)}</button>`).join("");
+}
+$("piani-scelti").addEventListener("click", e => {
+  const b = e.target.closest("[data-piano]"); if (!b) return;
+  const n = Number(b.dataset.piano), scelti = new Set(cor.dati.piani_scelti || []);
+  scelti.has(n) ? scelti.delete(n) : scelti.add(n);
+  cor.dati.piani_scelti = [...scelti].sort((a, b) => a - b);
+  b.setAttribute("aria-pressed", String(scelti.has(n))); salvaDopo();
+});
 
 // dettaglio delle superfici
 function disegnaDettaglio() {
@@ -675,7 +711,7 @@ function aggiorna() {
     ROI = utile lordo ÷ totale costi<br>
     Utile lordo = ricavi − totale costi = ${euro(r.ricavi)} − ${euro(r.costi)} = <b>${euro(r.utile)}</b><br>
     ROI = ${euro(r.utile)} ÷ ${euro(r.costi)} = <b>${fmt(r.roi, 1)}%</b><br>
-    <small class="nota">Le voci sotto usano i valori standard del business plan (lavori ${fmt(STANDARD.lavori_mq)} €/mq,
+    <small class="nota">Le voci sotto usano i valori standard del business plan (lavori ${fmt(lavoriMq(cor.dati))} €/mq,
     oneri finanziari ${ONERI_PCT}%…). Il tetto da rifare non cambia il ROI. Semaforo: verde da ${ROI_VERDE}%, giallo da ${ROI_GIALLO}%.</small>`;
   $("e-roi").textContent = "ROI " + fmt(r.roi) + "%";
   $("e-utile").innerHTML = `<span>utile lordo</span><b>${euro(r.utile)}</b>`;
@@ -691,7 +727,7 @@ function vociConto(r) {  // [voce, euro, spiegazione]: le stesse nel riquadro de
     ["Ricavi", r.ricavi, `${fmt(r.mq_rif, r.mq_rif % 1 ? 1 : 0)} mq × ${fmt(v.vendita_mq)} €/mq`],
     ["Acquisto", r.acquisto],
     ["Notaio e imposte", r.notaio, "(acquisto + due diligence) × 9% + 3.000 €"],
-    ["Ristrutturazione", r.ristrutturazione, `${fmt(STANDARD.lavori_mq)} €/mq + ricarico Edilenergetica ${STANDARD.ricarico_edil}%`],
+    ["Ristrutturazione", r.ristrutturazione, `${fmt(lavoriMq(r.v))} €/mq + ricarico Edilenergetica ${STANDARD.ricarico_edil}%`],
     ["Architetto e imprevisti", r.architetto + r.imprevisti, `${STANDARD.architetto_pct}% + 5% dei lavori delle ditte`],
     ["Oneri finanziari", r.oneri_fin, `${ONERI_PCT}% degli altri costi`],
     ["Spese standard", spese, "due diligence, rendering, assicurazioni, allacci"],
@@ -909,7 +945,7 @@ async function creaPdf(v) {
     riga("ROI", fmt(r.roi, 1) + "%", true);
     riga(`Prezzo massimo per un ROI del ${ROI_OBIETTIVO}%`, r.prezzo_max > 0 ? euro(Math.floor(r.prezzo_max / 1000) * 1000) : "non c'è");
     spazio(6); doc.setFont("helvetica", "normal").setFontSize(8).setTextColor(...GRIGIO)
-      .text(testoPdf(`Stima veloce con i valori standard del business plan (lavori ${fmt(STANDARD.lavori_mq)} €/mq, oneri finanziari ${ONERI_PCT}%).`), M, y); y += 4;
+      .text(testoPdf(`Stima veloce con i valori standard del business plan (lavori ${fmt(lavoriMq(d))} €/mq, oneri finanziari ${ONERI_PCT}%).`), M, y); y += 4;
   } else {
     if (d.prezzo) riga("Prezzo di acquisto", euro(daK(d.prezzo)));
     if (mqTot(d)) riga("Mq", fmt(mqTot(d)) + " mq");
@@ -919,6 +955,8 @@ async function creaPdf(v) {
   if (det.length) { titolo("Superfici"); for (const x of det) riga(x.categoria, fmt(x.mq) + " mq"); }
   const sn = k => ({si: "Sì", no: "No", non_so: "Non so"}[d[k]] || "-");
   titolo("L'edificio");
+  if (d.tipo) riga("Cosa compriamo", d.tipo === "palazzina" ? "Intera palazzina"
+    : "Solo alcuni piani" + ((d.piani_scelti || []).length ? ": " + d.piani_scelti.map(nomePiano).join(", ") : ""));
   riga("Piani dell'edificio", d.piani ? String(d.piani) : "-");
   riga("Tetto da rifare", sn("tetto"));
   riga("Posti auto / garage realizzabili", sn("posti_auto"));
