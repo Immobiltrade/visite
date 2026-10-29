@@ -129,6 +129,10 @@ main { padding: 14px max(16px, env(safe-area-inset-right, 0px)) 24px max(16px, e
 .galleria figure { margin: 0; position: relative; flex: none; width: 72px; height: 72px }
 .galleria img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; display: block }
 .galleria .x { position: absolute; top: 2px; right: 2px; background: rgba(0,0,0,.55); color: #fff; border: 0; padding: 2px 6px; font-size: 12px }
+.galleria .stella { position: absolute; bottom: 2px; left: 2px; background: rgba(0,0,0,.55); color: #fff; border: 0; border-radius: 8px;
+  padding: 2px 6px; font-size: 13px }
+.galleria .stella.si { background: var(--accent, #EE8524) }
+.galleria figure.principale img { outline: 3px solid var(--accent, #EE8524); outline-offset: -3px }
 .conta { font-size: 14px; font-weight: 700; color: var(--ok) }
 #video:empty { display: none }
 .video video { width: 100%; max-height: 260px; border-radius: 10px; background: #000; display: block }
@@ -292,6 +296,7 @@ main { padding: 14px max(16px, env(safe-area-inset-right, 0px)) 24px max(16px, e
         <label class="piu-foto" for="f_foto_cam" aria-label="Scatta un'altra foto">+</label>
         <input type="file" id="f_foto_cam" accept="image/*" capture="environment" hidden>
       </div>
+      <span class="nota" id="nota-copertina" hidden>☆ = foto principale, quella in cima al PDF</span>
     </div>
     <div class="campo" id="m-video" hidden>
       <span class="conta" id="conta-video"></span>
@@ -918,9 +923,12 @@ async function creaPdf(v) {
   const spazio = h => { if (y + h > 280) { doc.addPage(); y = 18; } };
   const titolo = t => { spazio(14); y += 4; doc.setFont("helvetica", "bold").setFontSize(12).setTextColor(...BLU).text(testoPdf(t), M, y);
     y += 2; doc.setDrawColor(...ARANCIO).setLineWidth(0.5).line(M, y, M + L, y); y += 6; };
-  const riga = (k, val, forte) => { spazio(7);
+  const riga = (k, val, forte, come) => {  // come = spiegazione del calcolo, piccola e grigia sotto la voce (Eric 29/10)
+    const sotto = come ? doc.setFontSize(7.5).splitTextToSize(testoPdf(come), L * 0.72) : [];
+    spazio(7 + sotto.length * 3.2);
     doc.setFont("helvetica", forte ? "bold" : "normal").setFontSize(9.5).setTextColor(...BLU).text(testoPdf(k), M + 1, y);
     doc.setFont("helvetica", "bold").text(testoPdf(val), M + L - 1, y, {align: "right"});
+    if (sotto.length) { doc.setFont("helvetica", "normal").setFontSize(7.5).setTextColor(...GRIGIO).text(sotto, M + 1, y + 3.6); y += sotto.length * 3.2; }
     y += 2; doc.setDrawColor(221, 227, 235).setLineWidth(0.2).line(M, y, M + L, y); y += 4.5; };
   doc.setFont("helvetica", "bold").setFontSize(18).setTextColor(...BLU);
   const nome = doc.splitTextToSize(testoPdf(v.nome || "Visita senza nome"), L); doc.text(nome, M, y); y += nome.length * 7;
@@ -928,9 +936,9 @@ async function creaPdf(v) {
     .text(testoPdf(`Visita del ${new Date(v.creata).toLocaleString("it-IT", {day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit"})}`
       + (v.autore ? ` · ${v.autore}` : "")), M, y);
   y += 4;
-  const foto = (await fileDi(v.id)).filter(f => f.tipo === "foto");
+  const foto = (await fileDi(v.id)).filter(f => f.tipo === "foto").sort((a, b) => a.creato.localeCompare(b.creato));  // come la galleria
   if (foto.length) {
-    try { const p = await fotoPdf(foto[0]); const h = Math.min(95, L * p.h / p.w), w = h * p.w / p.h;
+    try { const p = await fotoPdf(foto.find(f => f.copertina) || foto[0]); const h = Math.min(95, L * p.h / p.w), w = h * p.w / p.h;
       doc.addImage(p.src, "JPEG", M, y, w, h); y += h + 2; } catch (e) {}
   }
   titolo("I numeri");
@@ -938,12 +946,23 @@ async function creaPdf(v) {
     riga("Prezzo di acquisto", euro(r.acquisto));
     riga("Mq", fmt(r.mq_rif, r.mq_rif % 1 ? 1 : 0) + " mq");
     riga("Rivendita al mq", fmt(d.vendita_mq) + " €/mq");
-    for (const [t, n] of vociConto(r).slice(2)) riga(t, euro(n));  // senza ricavi e acquisto, già sopra
-    riga("Totale costi", euro(r.costi), true);
-    riga("Ricavi", euro(r.ricavi), true);
-    riga("Utile lordo", euro(r.utile), true);
-    riga("ROI", fmt(r.roi, 1) + "%", true);
-    riga(`Prezzo massimo per un ROI del ${ROI_OBIETTIVO}%`, r.prezzo_max > 0 ? euro(Math.floor(r.prezzo_max / 1000) * 1000) : "non c'è");
+    const v = r.v, mq = fmt(r.mq_rif, r.mq_rif % 1 ? 1 : 0), altri = r.costi - r.oneri_fin;
+    const come = {  // come si calcola ogni voce, con i numeri di questa visita
+      "Notaio e imposte": `(acquisto ${euro(r.acquisto)} + due diligence ${euro(r.due_diligence)}) x 9% + 3.000 €`,
+      "Ristrutturazione": `${mq} mq x ${fmt(lavoriMq(d))} €/mq = ${euro(r.lavori_ditte)} di lavori delle ditte, + ricarico Edilenergetica ${v.ricarico_edil}% (${euro(r.ricarico_edil)})`,
+      "Architetto e imprevisti": `architetto ${v.architetto_pct}% (${euro(r.architetto)}) + imprevisti 5% (${euro(r.imprevisti)}) dei lavori delle ditte ${euro(r.lavori_ditte)}, senza ricarico`,
+      "Oneri finanziari": `${ONERI_PCT}% del totale di tutti gli altri costi (${euro(altri)})`,
+      "Spese standard": `due diligence ${euro(r.due_diligence)} + rendering ${euro(r.rendering)} + assicurazioni/fidejussioni ${euro(r.assicurazioni)} + allacciamenti ${euro(r.allacci)}`,
+      "Oneri cambio d'uso": "oneri al Comune scritti nella visita",
+      "Provvigioni agenzie": `acquisto ${v.prov_acq_pct}% di ${euro(r.acquisto)} (${euro(r.prov_acquisto)}) + vendita ${v.prov_ven_pct}% dei ricavi ${euro(r.ricavi)} (${euro(r.prov_vendita)})`,
+    };
+    for (const [t, n] of vociConto(r).slice(2)) riga(t, euro(n), false, come[t]);  // senza ricavi e acquisto, già sopra
+    riga("Totale costi", euro(r.costi), true, "somma di acquisto e di tutte le voci sopra");
+    riga("Ricavi", euro(r.ricavi), true, `${mq} mq x ${fmt(d.vendita_mq)} €/mq di rivendita`);
+    riga("Utile lordo", euro(r.utile), true, `ricavi ${euro(r.ricavi)} - totale costi ${euro(r.costi)}`);
+    riga("ROI", fmt(r.roi, 1) + "%", true, `utile lordo ${euro(r.utile)} / totale costi ${euro(r.costi)}`);
+    riga(`Prezzo massimo per un ROI del ${ROI_OBIETTIVO}%`, r.prezzo_max > 0 ? euro(Math.floor(r.prezzo_max / 1000) * 1000) : "non c'è",
+      false, `il prezzo di acquisto più alto con cui l'utile è ancora il ${ROI_OBIETTIVO}% dei costi (le altre voci ricalcolate di conseguenza)`);
     spazio(6); doc.setFont("helvetica", "normal").setFontSize(8).setTextColor(...GRIGIO)
       .text(testoPdf(`Stima veloce con i valori standard del business plan (lavori ${fmt(lavoriMq(d))} €/mq, oneri finanziari ${ONERI_PCT}%).`), M, y); y += 4;
   } else {
@@ -965,7 +984,7 @@ async function creaPdf(v) {
   riga("Cambio di destinazione d'uso", sn("cambio_uso") + (d.cambio_uso === "si" && d.oneri_cambio_uso ? ` (oneri ${euro(d.oneri_cambio_uso)})` : ""));
   const a = d.agenzia || {}, ag = [["Agenzia", a.nome], ["Agente", a.agente], ["Telefono", a.telefono], ["Email", a.email]].filter(x => x[1]);
   if (ag.length) { titolo("Agenzia immobiliare"); for (const [k, x] of ag) riga(k, x); }
-  const altri = foto.slice(1, 13);
+  const prima = foto.find(f => f.copertina) || foto[0], altri = foto.filter(f => f !== prima).slice(0, 12);
   if (altri.length) {
     titolo("Altre foto");
     const lato = (L - 8) / 3; let col = 0;
@@ -1029,7 +1048,9 @@ async function mostraFile() {
      <audio controls preload="metadata" src="${link(x)}"></audio></div>`).join("");
   $("conta-foto").textContent = foto.length ? `${foto.length === 1 ? "1 foto salvata" : foto.length + " foto salvate"} ✓` : "";
   $("galleria").innerHTML = foto.map((x, i) =>
-    `<figure><img src="${link(x)}" alt="Foto ${i + 1}"><button class="x" data-del="${x.id}" aria-label="Elimina foto ${i + 1}">✕</button></figure>`).join("");
+    `<figure${x.copertina ? ' class="principale"' : ""}><img src="${link(x)}" alt="Foto ${i + 1}"><button class="x" data-del="${x.id}" aria-label="Elimina foto ${i + 1}">✕</button>
+     <button class="stella${x.copertina ? " si" : ""}" data-copertina="${x.id}" aria-label="Foto ${i + 1} come foto principale del PDF">${x.copertina ? "★" : "☆"}</button></figure>`).join("");
+  $("nota-copertina").hidden = foto.length < 2;
   const video = f.filter(x => x.tipo === "video"), big = f.filter(x => x.tipo === "biglietto");
   const peso = x => x.dati ? x.dati.byteLength : (x.blob ? x.blob.size : 0);
   $("conta-video").textContent = video.length ? `${video.length === 1 ? "1 video salvato" : video.length + " video salvati"} ✓` : "";
@@ -1043,6 +1064,15 @@ async function mostraFile() {
   $("galleria-biglietto").innerHTML = big.map((x, i) =>
     `<figure><img src="${link(x)}" alt="Biglietto ${i + 1}"><button class="x" data-del="${x.id}" aria-label="Elimina biglietto ${i + 1}">✕</button></figure>`).join("");
 }
+// foto principale (Eric 29/10): quella in cima al PDF. Si segna solo sul telefono, sul file: la visita non si reinvia
+document.addEventListener("click", async e => {
+  const b = e.target.closest("[data-copertina]"); if (!b) return;
+  for (const f of (await fileDi(cor.id)).filter(x => x.tipo === "foto")) {
+    const si = f.id === b.dataset.copertina && !f.copertina;
+    if (!!f.copertina !== si) { f.copertina = si; await metti("file", f); }
+  }
+  mostraFile();
+});
 document.addEventListener("click", async e => {
   const b = e.target.closest("[data-del]"); if (!b) return;
   if (!b.classList.contains("conferma")) { b.classList.add("conferma"); b.textContent = "Elimina?"; setTimeout(() => { b.classList.remove("conferma"); b.textContent = "✕"; }, 3000); return; }
