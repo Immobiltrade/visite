@@ -143,6 +143,11 @@ main { padding: 14px max(16px, env(safe-area-inset-right, 0px)) 24px max(16px, e
 #ag-modo button[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); border-color: var(--accent) }
 
 .fine { display: grid; gap: 10px; margin-top: 4px }
+.chiedi { position: fixed; inset: 0; background: rgba(15,27,45,.45); display: flex; align-items: flex-end; justify-content: center; z-index: 50; padding: 16px }
+.chiedi[hidden] { display: none }
+.chiedi-box { background: var(--card); color: var(--fg); border-radius: 18px; padding: 18px; width: 100%; max-width: 480px; display: grid; gap: 10px }
+.chiedi-box b { font-size: 19px }
+.chiedi-box p { margin: 0 }
 .secondario { width: 100%; border: 1px solid var(--line); background: none; border-radius: 12px; padding: 14px; font-weight: 600; color: var(--muted) }
 .secondario.conferma { background: var(--bad); color: #fff; border-color: var(--bad) }
 
@@ -311,11 +316,21 @@ main { padding: 14px max(16px, env(safe-area-inset-right, 0px)) 24px max(16px, e
   </div>
 
   <div class="fine">
-    <button class="grande" id="conclusa">Visita conclusa</button>
+    <button class="grande" id="conclusa">Visita conclusa – salva</button>
     <button class="secondario" id="pdf">Condividi la visita in PDF</button>
     <button class="secondario" id="elimina">Elimina dal telefono</button>
   </div>
 </main>
+
+<div class="chiedi" id="chiedi" hidden>
+  <div class="chiedi-box" role="dialog" aria-modal="true" aria-labelledby="chiedi-t">
+    <b id="chiedi-t">Vuoi salvare le modifiche?</b>
+    <p class="nota" id="chiedi-n">Con «Salva» la visita va nel sistema.</p>
+    <button class="grande" id="chiedi-si">Salva</button>
+    <button class="secondario" id="chiedi-no">Non salvare</button>
+    <button class="secondario" id="chiedi-annulla">Continua la visita</button>
+  </div>
+</div>
 
 <footer class="esito" id="esito" hidden>
   <div class="esito-in">
@@ -540,7 +555,7 @@ async function home() {
     const r = conto(x.dati), mq = mqTot(x.dati);
     return `<div class="riga-c"><button class="riga" data-id="${x.id}"><span class="sem ${semaforo(r)}"></span>
       <span class="riga-t"><b>${esc(x.nome || "Visita senza nome")}</b>
-      <small>${dataIt(x.creata)}${mq ? " · " + fmt(mq) + " mq" : ""}${x.stato === "conclusa" ? " · conclusa" : ""}${x.inviata && !x.da_inviare ? " · nel sistema ✓" : ""}</small></span>
+      <small>${dataIt(x.creata)}${mq ? " · " + fmt(mq) + " mq" : ""}${!x.inviata ? (x.da_inviare && x.stato === "conclusa" ? " · salvata, in invio" : " · bozza, non inviata") : x.modificata || x.da_inviare ? " · modifiche non inviate" : " · nel sistema ✓"}</small></span>
       <span class="riga-roi">${r && r.roi !== null ? "ROI " + fmt(r.roi) + "%" : "–"}</span></button>
       <button class="x" data-elv="${x.id}" aria-label="Elimina la visita dal telefono">✕</button></div>`;
   }).join("") : `<p class="vuoto">Nessuna visita ancora.<br>Tocca <b>Nuova visita</b> quando entri in un immobile: data, ora e posizione si salvano da sole.</p>`;
@@ -553,7 +568,7 @@ $("elenco").addEventListener("click", async e => {
     // Elimina senza aprire: primo tocco chiede conferma. Toglie la visita solo dal telefono (nel sistema resta).
     if (!x.classList.contains("conferma")) {
       const v = await una("visite", x.dataset.elv);
-      x.classList.add("conferma"); x.textContent = v && v.inviata && !v.da_inviare ? "Elimina?" : "Non inviata! Elimina?";
+      x.classList.add("conferma"); x.textContent = v && v.inviata && !v.da_inviare && !v.modificata ? "Elimina?" : "Non inviata! Elimina?";
       setTimeout(() => { x.classList.remove("conferma"); x.textContent = "✕"; }, 4000); return;
     }
     const id = x.dataset.elv;
@@ -567,15 +582,35 @@ $("nuova").addEventListener("click", async () => {
   const v = {id: nuovoId(), creata: new Date().toISOString(), aggiornata: new Date().toISOString(), autore: leggiChi() || null, nome: "", pos: null,
              stato: "bozza", dati: {dettaglio: nuovoDettaglio()}};
   await metti("visite", v);
-  apriVisita(v);
+  apriVisita(v, true);
   prendiPosizione(v);
   try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch (e) {}
 });
-$("indietro").addEventListener("click", async () => { await salvaOra(); home(); });
+// Eric 29/10: tornando indietro, se hai cambiato qualcosa, il telefono chiede se salvare
+$("indietro").addEventListener("click", async () => {
+  await salvaOra();
+  if (!toccata) { home(); return; }
+  $("chiedi-n").textContent = nuovaOra ? "Con «Salva» la visita va nel sistema. Con «Non salvare» la visita nuova si cancella dal telefono."
+    : "Con «Salva» le modifiche vanno nel sistema. Con «Non salvare» la visita torna com'era quando l'hai aperta.";
+  $("chiedi").hidden = false;
+});
+$("chiedi-annulla").addEventListener("click", () => { $("chiedi").hidden = true; });
+$("chiedi-si").addEventListener("click", async () => { $("chiedi").hidden = true; await concludi(); });
+$("chiedi-no").addEventListener("click", async () => {
+  $("chiedi").hidden = true;
+  const id = cor.id;
+  for (const f of await fileDi(id)) if (nuovaOra || !fileIniziali.has(f.id)) await togli("file", f.id);
+  if (nuovaOra) { await togli("visite", id); avviso("Visita non salvata: cancellata dal telefono."); }
+  else { await metti("visite", iniziale); avviso("Modifiche annullate."); }
+  cor = null; home();
+});
 
 // ---------- la visita
-function apriVisita(v) {
+let toccata = false, nuovaOra = false, iniziale = null, fileIniziali = new Set();  // cosa c'era all'apertura
+function apriVisita(v, nuova = false) {
   cor = v;
+  toccata = false; nuovaOra = nuova; iniziale = JSON.parse(JSON.stringify(v)); fileIniziali = new Set();
+  fileDi(v.id).then(f => { fileIniziali = new Set(f.map(x => x.id)); }).catch(() => {});
   const d = v.dati;
   if (!d.dettaglio || d.dettaglio.some(x => "coeff" in x)) d.dettaglio = nuovoDettaglio();
   $("home").hidden = true; $("visita").hidden = false; $("esito").hidden = false;
@@ -609,7 +644,7 @@ function prendiPosizione(v) {
   }, () => { v.pos = {errore: true}; if (cor && cor.id === v.id) mostraPosizione(); salvaVisita(v); },
   {enableHighAccuracy: true, timeout: 15000, maximumAge: 60000});
 }
-const salvaVisita = v => cor && cor.id === v.id ? salvaDopo() : metti("visite", Object.assign(v, {da_inviare: true}));
+const salvaVisita = v => cor && cor.id === v.id ? salvaDopo() : metti("visite", Object.assign(v, {modificata: true}));
 // Dalla posizione all'indirizzo (OpenStreetMap, gratuito). Riempie il campo solo se è ancora vuoto.
 async function indirizzoDa(v) {
   try {
@@ -778,25 +813,30 @@ $("esito-top").addEventListener("click", () => {
   if (det.hidden) { $("e-spiega").hidden = true; $("e-aiuto").setAttribute("aria-pressed", "false"); }
 });
 
-// ---------- salvataggio automatico
+// ---------- salvataggio automatico SUL TELEFONO. Al sistema la visita va SOLO con «Visita conclusa – salva» (Eric 29/10):
+// prima resta una bozza sul telefono; anche le modifiche dopo l'invio partono solo ripremendo il pulsante.
 let tSalva = 0;
-function salvaDopo() { clearTimeout(tSalva); tSalva = setTimeout(salvaOra, 400); }
+function salvaDopo() { toccata = true; clearTimeout(tSalva); tSalva = setTimeout(salvaOra, 400); }
 async function salvaOra() {
   clearTimeout(tSalva);
-  if (!cor) return;
+  if (!cor || !toccata) return;
   cor.aggiornata = new Date().toISOString();
-  cor.da_inviare = true;
-  try { await metti("visite", cor); $("salvato").textContent = "salvato ✓"; }
+  cor.modificata = true;
+  try { await metti("visite", cor); $("salvato").textContent = cor.inviata ? "salvato sul telefono ✓" : "bozza salvata sul telefono ✓"; }
   catch (e) { $("salvato").textContent = "non salvato!"; }
-  inviaDopo();
 }
 document.addEventListener("visibilitychange", async () => { if (document.hidden) { await salvaOra(); invia(); } });
 
 $("conclusa").addEventListener("click", async () => {
-  cor.stato = "conclusa"; await salvaOra();
+  await concludi();
+});
+async function concludi() {
+  toccata = true; cor.stato = "conclusa"; await salvaOra();
+  cor.da_inviare = true; cor.modificata = false; await metti("visite", cor);
+  invia();
   avviso(collegato() ? "Visita salvata: la invio al sistema." : "Visita salvata sul telefono.");
   home();
-});
+}
 $("elimina").addEventListener("click", async e => {
   const b = e.currentTarget;
   if (!b.classList.contains("conferma")) { b.classList.add("conferma"); b.textContent = "Tocca di nuovo per eliminare"; return; }
@@ -1091,7 +1131,7 @@ async function nuovoFile(visita, tipo, blob, extra = {}) {
                            dati: await blob.arrayBuffer(), creato: new Date().toISOString(), inviato: false}, extra);
   await metti("file", f);
   if (cor && cor.id === visita) salvaDopo();
-  else { const v = await una("visite", visita); if (v) await metti("visite", Object.assign(v, {da_inviare: true})); }
+  else { const v = await una("visite", visita); if (v) await metti("visite", Object.assign(v, {modificata: true})); }
   return f;
 }
 const blobDi = f => f.blob || new Blob([f.dati], {type: f.mime});
@@ -1157,13 +1197,12 @@ async function chiama(percorso, opz = {}) {
   return r;
 }
 let inInvio = false, erroreInvio = "", tInvia = 0;
-function inviaDopo() { clearTimeout(tInvia); tInvia = setTimeout(invia, 4000); }
 async function invia() {
   clearTimeout(tInvia);
   if (inInvio || !collegato() || !navigator.onLine) { statoInvio(); return; }
   inInvio = true; erroreInvio = "";
   try {
-    for (const v of (await tutte("visite")).filter(x => x.da_inviare)) {
+    for (const v of (await tutte("visite")).filter(x => x.da_inviare && x.stato === "conclusa")) {
       const versione = v.aggiornata;
       for (const f of (await fileDi(v.id)).filter(x => !x.inviato && !x.scartato)) {
         const est = ["foto", "biglietto"].includes(f.tipo) ? "jpg" : f.mime.includes("webm") ? "webm"
@@ -1191,12 +1230,13 @@ async function invia() {
         conto: r ? {roi: r.roi, utile: r.utile, ricavi: r.ricavi, costi: r.costi, prezzo_max: r.prezzo_max} : null};
       await chiama("/rest/v1/rpc/salva_visita", {method: "POST", body: JSON.stringify({riga}),
         headers: {"Content-Type": "application/json"}});
-      // inviata: se nel frattempo è cambiata qualcosa, resta da inviare e partirà al prossimo giro
       const ora = await una("visite", v.id);
-      if (ora && ora.aggiornata === versione && !(await fileDi(v.id)).some(x => !x.inviato && !x.scartato)) {
+      // inviata la versione del pulsante; se poi è cambiato qualcosa resta «modificata» e parte solo ripremendolo
+      if (ora && !(await fileDi(v.id)).some(x => !x.inviato && !x.scartato)) {
         ora.da_inviare = false; ora.inviata = new Date().toISOString();
+        if (ora.aggiornata !== versione) ora.modificata = true;
         await metti("visite", ora);
-        if (cor && cor.id === v.id && cor.aggiornata === versione) { cor.da_inviare = false; cor.inviata = ora.inviata; }
+        if (cor && cor.id === v.id) { cor.da_inviare = false; cor.inviata = ora.inviata; cor.modificata = ora.modificata; }
       }
     }
   } catch (e) { erroreInvio = e.message; console.warn("invio", e); }
@@ -1213,12 +1253,19 @@ async function statoInvio() {
   if (!el || $("home").hidden) return;
   mostraChi();
   let n = 0;
-  try { n = (await tutte("visite")).filter(x => x.da_inviare).length; } catch (e) {}
+  let bozze = 0;
+  try {
+    const tutteV = await tutte("visite");
+    n = tutteV.filter(x => x.da_inviare && x.stato === "conclusa").length;
+    bozze = tutteV.filter(x => !(x.da_inviare && x.stato === "conclusa") && (!x.inviata || x.modificata)).length;
+  } catch (e) {}
   const chi = leggiChi();
   el.innerHTML = (n === 0 ? `<b class="ok">Tutte le visite sono nel sistema ✓</b>`
     : !navigator.onLine ? `<b>${n} da inviare</b>: partiranno appena c'è rete.`
     : erroreInvio ? `<b class="ko">Invio non riuscito</b> (${n} da inviare): riprovo più tardi. <button class="link" id="riprova-invio">Riprova ora</button>`
-    : `<b>Invio in corso…</b> (${n})`) + (chi ? ` <span class="nota">· visite di <button class="link" id="cambia-chi">${esc(chi)}</button></span>` : "");
+    : `<b>Invio in corso…</b> (${n})`)
+    + (bozze ? ` <span class="nota">· ${bozze} ${bozze === 1 ? "visita non salvata" : "visite non salvate"} nel sistema: aprila e premi «Visita conclusa – salva»</span>` : "")
+    + (chi ? ` <span class="nota">· visite di <button class="link" id="cambia-chi">${esc(chi)}</button></span>` : "");
 }
 document.addEventListener("click", e => {
   const id = e.target.id;
