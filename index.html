@@ -51,6 +51,7 @@ main { padding: 14px max(16px, env(safe-area-inset-right, 0px)) 24px max(16px, e
 .grande { width: 100%; border: 0; border-radius: 14px; padding: 18px; font-size: 19px; font-weight: 700;
   background: var(--accent); color: var(--accent-fg) }
 .nota { font-size: 13px; color: var(--muted) }
+#stato-vocali.ok { color: var(--ok); font-weight: 700 }
 .vuoto { color: var(--muted); text-align: center; padding: 24px 8px; margin: 0 }
 
 .riga { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; background: var(--card);
@@ -287,6 +288,7 @@ main { padding: 14px max(16px, env(safe-area-inset-right, 0px)) 24px max(16px, e
     </div>
     <div class="campo" id="m-audio" hidden>
       <span class="conta" id="conta-audio"></span>
+      <span class="nota" id="stato-vocali" hidden></span>
       <div id="audio" style="display:grid;gap:6px"></div>
     </div>
     <div class="campo" id="m-foto" hidden>
@@ -586,7 +588,7 @@ function apriVisita(v) {
   disegnaDettaglio(); mostraDettaglio(conDet);
   $("elimina").classList.remove("conferma"); $("elimina").textContent = "Elimina dal telefono";
   mostraPosizione();
-  aggiorna(); mostraFile();
+  aggiorna(); mostraFile(); mostraMac(v);
   window.scrollTo(0, 0);
 }
 
@@ -982,8 +984,18 @@ async function creaPdf(v) {
   riga("Difformità o abusi", sn("difformita"));
   riga("Vincoli", sn("vincoli"));
   riga("Cambio di destinazione d'uso", sn("cambio_uso") + (d.cambio_uso === "si" && d.oneri_cambio_uso ? ` (oneri ${euro(d.oneri_cambio_uso)})` : ""));
-  const a = d.agenzia || {}, ag = [["Agenzia", a.nome], ["Agente", a.agente], ["Telefono", a.telefono], ["Email", a.email]].filter(x => x[1]);
+  const mac = await chiediMac(v) || {};
+  const a = Object.assign({}, ...Object.values(mac.biglietti || {}).map(x => x || {}), ...Object.entries(d.agenzia || {})
+    .filter(x => x[1]).map(([k, x]) => ({[k]: x})));  // vale quello scritto a mano, i vuoti dal biglietto letto dal Mac
+  const ag = [["Agenzia", a.nome], ["Agente", a.agente], ["Telefono", a.telefono], ["Email", a.email]].filter(x => x[1]);
   if (ag.length) { titolo("Agenzia immobiliare"); for (const [k, x] of ag) riga(k, x); }
+  if (mac.note) {  // note ricavate dal Mac dai vocali
+    titolo("Note dai vocali");
+    for (const r of doc.setFont("helvetica", "normal").setFontSize(9.5).splitTextToSize(testoPdf(mac.note), L - 2)) {
+      spazio(5); doc.setFont("helvetica", "normal").setFontSize(9.5).setTextColor(...BLU).text(r, M + 1, y); y += 4.6;
+    }
+    y += 2;
+  }
   const prima = foto.find(f => f.copertina) || foto[0], altri = foto.filter(f => f !== prima).slice(0, 12);
   if (altri.length) {
     titolo("Altre foto");
@@ -1000,10 +1012,36 @@ async function creaPdf(v) {
     if (col) y += lato * 0.75 + 4;
   }
   const n = (await fileDi(v.id)).filter(f => f.tipo === "audio" || f.tipo === "video").length;
-  spazio(8); doc.setFont("helvetica", "normal").setFontSize(8).setTextColor(...GRIGIO)
+  spazio(5); doc.setFont("helvetica", "normal").setFontSize(8).setTextColor(...GRIGIO)
     .text(testoPdf((n ? `Vocali e video (${n}) si vedono nella piattaforma Immobiltrade. ` : "") + "Scheda creata con l'app Visite Immobiltrade."), M, y + 2);
   return doc.output("blob");
 }
+// ---------- cosa ha fatto il Mac dell'ufficio (Eric 29/10): note dei vocali e biglietti letti di QUESTA visita.
+// La funzione trascrizione_visita dà solo quelli, a chi conosce il codice della visita. Si tengono a parte
+// (localStorage), così la visita non cambia e non riparte l'invio.
+const leggiMac = id => { try { return JSON.parse(localStorage.getItem("visite-mac-" + id) || "null"); } catch (e) { return null; } };
+async function chiediMac(v) {
+  if (!collegato() || !navigator.onLine || !v.inviata) return leggiMac(v.id);
+  try {
+    const r = await chiama("/rest/v1/rpc/trascrizione_visita", {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({vid: v.id})});
+    const t = await r.json();
+    try { localStorage.setItem("visite-mac-" + v.id, JSON.stringify(t)); } catch (e) {}
+    return t;
+  } catch (e) { return leggiMac(v.id); }
+}
+async function mostraMac(v) {
+  const audio = (await fileDi(v.id)).filter(f => f.tipo === "audio"), box = $("stato-vocali");
+  if (!audio.length) { box.hidden = true; return; }
+  const t = await chiediMac(v);
+  if (!cor || cor.id !== v.id) return;
+  const fatti = audio.filter(f => ((t && t.vocali) || []).includes(f.id)).length;
+  box.hidden = false; box.classList.toggle("ok", fatti === audio.length);
+  box.textContent = fatti === audio.length ? "Vocali trascritti dal Mac ✓ · le note sono nel PDF"
+    : fatti ? `${fatti} su ${audio.length} vocali trascritti dal Mac: gli altri al prossimo giro (ogni ora, se il Mac è acceso)`
+    : "Vocali non ancora trascritti: li legge il Mac dell'ufficio ogni ora, se è acceso";
+}
+
 $("pdf").addEventListener("click", async e => {
   const b = e.currentTarget, v = cor; if (!v || b.disabled) return;
   await salvaOra();
