@@ -362,7 +362,7 @@ const STANDARD = {
 };
 const ONERI_PCT = 10;           // oneri finanziari = 10% del totale degli altri costi (Eric 26/10); il BP vero si corregge dopo
 const MUTUO_PCT = 50;           // la banca di solito dà il 50% di (acquisto + lavori)
-const ROI_VERDE = 30, ROI_GIALLO = 20;  // semaforo: da confermare con Eric
+const ROI_VERDE = 27.5, ROI_GIALLO = 20;  // semaforo (Eric 04/11: verde da metà scala della lancetta, 27,5%)
 const ROI_OBIETTIVO = 30;       // per il "prezzo massimo"
 // Superfici: in alternativa ai mq commerciali si scrivono i mq reali per categoria (Eric 26/10: senza coefficienti,
 // il conto usa la somma)
@@ -776,7 +776,7 @@ function aggiorna() {
     Utile lordo = ricavi − totale costi = ${euro(r.ricavi)} − ${euro(r.costi)} = <b>${euro(r.utile)}</b><br>
     ROI = ${euro(r.utile)} ÷ ${euro(r.costi)} = <b>${fmt(r.roi, 1)}%</b><br>
     <small class="nota">Le voci sotto usano i valori standard del business plan (lavori ${fmt(lavoriMq(cor.dati))} €/mq,
-    oneri finanziari ${ONERI_PCT}%…). Il tetto da rifare non cambia il ROI. Semaforo: verde da ${ROI_VERDE}%, giallo da ${ROI_GIALLO}%.</small>`;
+    oneri finanziari ${ONERI_PCT}%…). Il tetto da rifare non cambia il ROI. Semaforo: verde da ${String(ROI_VERDE).replace(".", ",")}%, giallo da ${ROI_GIALLO}%.</small>`;
   $("e-roi").textContent = "ROI " + fmt(r.roi) + "%";
   $("e-utile").innerHTML = `<span>utile lordo</span><b>${euro(r.utile)}</b>`;
   $("esito-det").innerHTML = vociConto(r).map(([t, n, s]) => `<div class="voce"><span>${t}${s ? `<small>${s}</small>` : ""}</span><span>${euro(n)}</span></div>`).join("") +
