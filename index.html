@@ -561,6 +561,29 @@ async function home() {
   }).join("") : `<p class="vuoto">Nessuna visita ancora.<br>Tocca <b>Nuova visita</b> quando entri in un immobile: data, ora e posizione si salvano da sole.</p>`;
   statoInvio();
   invia();
+  // Eric 09/11: correzioni fatte dall'ufficio nella piattaforma → si ridisegna l'elenco con i nomi nuovi
+  let cambiate = false;
+  for (const x of v) if (await dallUfficio(x)) cambiate = true;
+  if (cambiate && !cor) home();
+}
+// ---------- modifiche fatte dall'ufficio nella piattaforma (Eric 09/11/2026). La funzione visita_ufficio dà nome,
+// indirizzo e risposte della visita SOLO se l'ufficio l'ha cambiata (supabase_visite_modifica_ufficio.sql).
+// Vale la modifica più recente: se sul telefono ci sono modifiche più nuove di quelle dell'ufficio, restano quelle.
+async function dallUfficio(v) {
+  if (!collegato() || !navigator.onLine || !v.inviata) return false;
+  try {
+    const r = await chiama("/rest/v1/rpc/visita_ufficio", {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({vid: v.id})});
+    const u = await r.json();
+    if (!u || !u.ufficio_modificata) return false;
+    const quando = new Date(u.ufficio_modificata);
+    if (v.ufficio_visto && new Date(v.ufficio_visto) >= quando) return false;  // già presa
+    if ((v.modificata || v.da_inviare) && new Date(v.aggiornata) > quando) return false;  // il telefono è più nuovo
+    Object.assign(v, {nome: u.nome || "", pos: u.pos || v.pos, dati: u.dati || v.dati, ufficio_visto: u.ufficio_modificata,
+                      aggiornata: u.ufficio_modificata, modificata: false, da_inviare: false});
+    await metti("visite", v);
+    return true;
+  } catch (e) { return false; }  // senza rete o funzione non ancora creata: resta com'è
 }
 $("elenco").addEventListener("click", async e => {
   const x = e.target.closest("[data-elv]");
@@ -632,6 +655,8 @@ function apriVisita(v, nuova = false) {
   mostraPosizione();
   aggiorna(); mostraFile(); mostraMac(v);
   window.scrollTo(0, 0);
+  // se nel frattempo l'ufficio l'ha corretta, si riapre con la versione dell'ufficio (solo se non l'hai ancora toccata)
+  dallUfficio(v).then(c => { if (c && cor && cor.id === v.id && !toccata) { apriVisita(v, nuova); avviso("Visita aggiornata con le modifiche dell'ufficio."); } });
 }
 
 function prendiPosizione(v) {
